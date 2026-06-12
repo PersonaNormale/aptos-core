@@ -1,4 +1,4 @@
-// #[test_only] is not allowed inside a row bracket.
+// #[test_only] is not allowed inside a test attribute group.
 address 0x1 {
 module M {
     #[test(addr = @0x1), test_only]

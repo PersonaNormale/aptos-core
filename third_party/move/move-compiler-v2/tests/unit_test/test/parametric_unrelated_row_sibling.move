@@ -1,4 +1,4 @@
-// A row bracket contains no unrelated sibling attributes.
+// A test attribute group contains no unrelated sibling attributes.
 address 0x1 {
 module M {
     #[test(addr = @0x1), deprecated]

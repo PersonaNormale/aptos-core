@@ -1,4 +1,4 @@
-// A row bracket contains exactly one #[test].
+// A test attribute group contains exactly one #[test].
 address 0x1 {
 module M {
     #[test(addr = @0x1), test(addr = @0x2)]
