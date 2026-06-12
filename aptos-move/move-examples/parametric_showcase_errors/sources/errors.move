@@ -8,7 +8,7 @@ module showcase_err::errors {
 
     // ---------------------------------------------------------------------------
     // REJECTED: multiple #[test] in one bracket
-    // A row bracket must contain exactly one #[test].
+    // A test attribute group must contain exactly one #[test].
     // ---------------------------------------------------------------------------
 
     #[test(a = @0x1), test(a = @0x2)]
@@ -17,8 +17,8 @@ module showcase_err::errors {
     }
 
     // ---------------------------------------------------------------------------
-    // REJECTED: unrelated sibling attribute in a row bracket
-    // A row bracket may only contain #[test] and #[expected_failure].
+    // REJECTED: unrelated sibling attribute in a test attribute group
+    // A test attribute group may only contain #[test] and #[expected_failure].
     // ---------------------------------------------------------------------------
 
     #[test(addr = @0x1), deprecated]

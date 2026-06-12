@@ -21,7 +21,7 @@ use move_core_types::{
 use move_model::{
     ast::{Address, Attribute, AttributeValue, ModuleName, Value},
     model::{
-        BracketGroupId, FieldData, FunId, FunctionKind, GlobalEnv, Loc, ModuleId, Parameter,
+        AttributeGroupId, FieldData, FunId, FunctionKind, GlobalEnv, Loc, ModuleId, Parameter,
         QualifiedId, StructId, TypeParameter, TypeParameterKind,
     },
     ty::{PrimitiveType, ReferenceKind, Type},
@@ -402,14 +402,14 @@ fn model_attributes(
 }
 
 /// Sibling ids run from zero within each attribute list, so a member's position is its id.
-fn position_id(index: usize) -> BracketGroupId {
-    BracketGroupId::new(u16::try_from(index).expect("attribute sibling id overflow"))
+fn position_id(index: usize) -> AttributeGroupId {
+    AttributeGroupId::new(u16::try_from(index).expect("attribute id overflow"))
 }
 
 fn model_attribute_apply(
     env: &mut GlobalEnv,
     loc: &Loc,
-    bracket_group_id: BracketGroupId,
+    attribute_group_id: AttributeGroupId,
     name: &str,
     args: &[XirAttributeArg],
 ) -> Result<Attribute> {
@@ -417,13 +417,13 @@ fn model_attribute_apply(
     let symbol = env.symbol_pool().make(name);
     match args {
         [XirAttributeArg::Num { value }] => Ok(Attribute::Assign {
-            bracket_group_id,
+            attribute_group_id,
             node_id,
             name: symbol,
             value: AttributeValue::Value(node_id, Value::Number(value.parse()?)),
         }),
         [XirAttributeArg::Bool { value }] => Ok(Attribute::Assign {
-            bracket_group_id,
+            attribute_group_id,
             node_id,
             name: symbol,
             value: AttributeValue::Value(node_id, Value::Bool(*value)),
@@ -442,7 +442,7 @@ fn model_attribute_apply(
                 })
                 .collect::<Result<Vec<_>>>()?;
             Ok(Attribute::Apply {
-                bracket_group_id,
+                attribute_group_id,
                 node_id,
                 name: symbol,
                 attrs,

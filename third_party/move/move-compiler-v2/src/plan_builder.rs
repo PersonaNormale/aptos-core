@@ -111,7 +111,7 @@ fn construct_module_test_plan(
     }
 }
 
-fn validate_row_brackets(
+fn validate_test_attribute_groups(
     env: &GlobalEnv,
     all_attrs: &[Attribute],
     test_attrs: &[&Attribute],
@@ -120,45 +120,45 @@ fn validate_row_brackets(
     let test_name = env.symbol_pool().make(TestingAttribute::TEST);
     let expected_failure_name = env.symbol_pool().make(TestingAttribute::EXPECTED_FAILURE);
 
-    let test_bracket_ids: std::collections::BTreeSet<move_model::model::BracketGroupId> =
-        test_attrs.iter().map(|a| a.bracket_group_id()).collect();
+    let test_attr_group_ids: std::collections::BTreeSet<move_model::model::AttributeGroupId> =
+        test_attrs.iter().map(|a| a.attribute_group_id()).collect();
 
     let mut has_error = false;
-    let mut reported_multi_test: std::collections::BTreeSet<move_model::model::BracketGroupId> =
+    let mut reported_multi_test: std::collections::BTreeSet<move_model::model::AttributeGroupId> =
         std::collections::BTreeSet::new();
 
-    // Check 1: no bracket contains more than one #[test].
+    // Check 1: no test attribute group contains more than one #[test].
     for test_attr in test_attrs {
-        let bracket_id = test_attr.bracket_group_id();
-        if reported_multi_test.contains(&bracket_id) {
+        let attr_group_id = test_attr.attribute_group_id();
+        if reported_multi_test.contains(&attr_group_id) {
             continue;
         }
         let count = test_attrs
             .iter()
-            .filter(|a| a.bracket_group_id() == bracket_id)
+            .filter(|a| a.attribute_group_id() == attr_group_id)
             .count();
         if count > 1 {
-            reported_multi_test.insert(bracket_id);
+            reported_multi_test.insert(attr_group_id);
             let loc = env.get_node_loc(test_attr.node_id());
             env.error_with_labels(fn_id_loc, "invalid parametric test row", vec![(
                 loc,
-                "A row bracket must contain exactly one #[test]".to_string(),
+                "A test attribute group must contain exactly one #[test]".to_string(),
             )]);
             has_error = true;
         }
     }
 
-    // Check 2: no test bracket contains an attribute other than #[test] or #[expected_failure].
+    // Check 2: no test attribute group contains an attribute other than #[test] or #[expected_failure].
     for attr in all_attrs {
-        let bracket_id = attr.bracket_group_id();
-        if !test_bracket_ids.contains(&bracket_id) {
+        let attr_group_id = attr.attribute_group_id();
+        if !test_attr_group_ids.contains(&attr_group_id) {
             continue;
         }
         if attr.name() != test_name && attr.name() != expected_failure_name {
             let loc = env.get_node_loc(attr.node_id());
             env.error_with_labels(fn_id_loc, "invalid parametric test row", vec![(
                 loc,
-                "A row bracket may only contain #[test] and #[expected_failure]".to_string(),
+                "A test attribute group may only contain #[test] and #[expected_failure]".to_string(),
             )]);
             has_error = true;
         }
@@ -199,19 +199,19 @@ fn build_test_info(
         return Vec::new();
     }
 
-    // Compute test bracket IDs before the test_only check.
-    let test_bracket_ids: std::collections::BTreeSet<move_model::model::BracketGroupId> =
-        test_attrs.iter().map(|a| a.bracket_group_id()).collect();
+    // Compute test attribute group IDs before the test_only check.
+    let test_attr_group_ids: std::collections::BTreeSet<move_model::model::AttributeGroupId> =
+        test_attrs.iter().map(|a| a.attribute_group_id()).collect();
 
     let test_only_attribute_opt = attrs.iter().find(|a| a.name() == test_only_name);
     let mut has_top_error = false;
 
     // A #[test] function cannot also be annotated #[test_only].
-    // Emit the legacy conflict error ONLY when test_only is in a DIFFERENT bracket from all
-    // test attrs.  If test_only shares a bracket with a #[test], validate_row_brackets handles it
+    // Emit the legacy conflict error ONLY when test_only is in a DIFFERENT attribute group from all
+    // test attrs.  If test_only shares a group with a #[test], validate_test_attribute_groups handles it
     // as an "invalid parametric test row" unrelated-sibling error.
     if let Some(test_only_attribute) = test_only_attribute_opt {
-        if !test_bracket_ids.contains(&test_only_attribute.bracket_group_id()) {
+        if !test_attr_group_ids.contains(&test_only_attribute.attribute_group_id()) {
             let msg = "Function annotated as both #[test(...)] and #[test_only]. You need to \
                        declare it as either one or the other";
             let test_only_id = test_only_attribute.node_id();
@@ -228,9 +228,9 @@ fn build_test_info(
         }
     }
 
-    let bracket_error = validate_row_brackets(env, &attrs, &test_attrs, &fn_id_loc);
+    let attr_group_error = validate_test_attribute_groups(env, &attrs, &test_attrs, &fn_id_loc);
 
-    if has_top_error || bracket_error {
+    if has_top_error || attr_group_error {
         return Vec::new();
     }
 
@@ -371,7 +371,7 @@ fn build_test_rows<'a>(
 ) -> Option<Vec<TestRow<'a>>> {
     let single_row = test_attrs.len() == 1;
     let mut test_attrs = test_attrs.to_vec();
-    test_attrs.sort_by_key(|test| test.bracket_group_id());
+    test_attrs.sort_by_key(|test| test.attribute_group_id());
     let mut rows = Vec::with_capacity(test_attrs.len());
     let mut has_error = false;
 
@@ -393,7 +393,7 @@ fn build_test_rows<'a>(
         for failure in failure_attrs {
             if !test_attrs
                 .iter()
-                .any(|test| test.bracket_group_id() == failure.bracket_group_id())
+                .any(|test| test.attribute_group_id() == failure.attribute_group_id())
             {
                 let loc = env.get_node_loc(failure.node_id());
                 env.error_with_labels(
@@ -401,7 +401,7 @@ fn build_test_rows<'a>(
                     "top-level expected_failure is not allowed on a parametric multi-row test — use row-local syntax instead",
                     vec![(
                         loc,
-                        "Place this inside the bracket of its #[test(...)] row".to_string(),
+                        "Place this inside the attribute group of its #[test(...)] row".to_string(),
                     )],
                 );
                 has_error = true;
@@ -410,23 +410,23 @@ fn build_test_rows<'a>(
     }
 
     for (index, test_attr) in test_attrs.into_iter().enumerate() {
-        let same_bracket = failure_attrs
+        let same_attr_group = failure_attrs
             .iter()
             .copied()
-            .filter(|failure| failure.bracket_group_id() == test_attr.bracket_group_id())
+            .filter(|failure| failure.attribute_group_id() == test_attr.attribute_group_id())
             .collect::<Vec<_>>();
 
-        if same_bracket.len() > 1 {
-            let loc = env.get_node_loc(same_bracket[1].node_id());
+        if same_attr_group.len() > 1 {
+            let loc = env.get_node_loc(same_attr_group[1].node_id());
             env.error_with_labels(
                 fn_id_loc,
-                "Multiple #[expected_failure] attributes in a single bracket",
+                "Multiple #[expected_failure] attributes in a single test attribute group",
                 vec![(loc, "Second occurrence here".to_string())],
             );
             has_error = true;
         }
 
-        let expected_failure_attr = match same_bracket.as_slice() {
+        let expected_failure_attr = match same_attr_group.as_slice() {
             [failure] => Some(*failure),
             [] if single_row => failure_attrs.first().copied(),
             [] => None,

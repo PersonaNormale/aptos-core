@@ -1,4 +1,4 @@
-// Valid row brackets are order-insensitive, assignments are reordered to match
+// Valid test attribute groups are order-insensitive, assignments are reordered to match
 // the function signature, and identical rows are accepted.
 address 0x1 {
 module M {
