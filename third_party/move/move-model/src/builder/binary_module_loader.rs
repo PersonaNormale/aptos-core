@@ -11,7 +11,7 @@ use crate::{
         ResourceSpecifier as ASTResourceSpecifier, Value,
     },
     model::{
-        BracketGroupId, FieldData, FieldId, FunId, FunctionData, FunctionKind, GlobalEnv, Loc,
+        AttributeGroupId, FieldData, FieldId, FunId, FunctionData, FunctionKind, GlobalEnv, Loc,
         ModuleData, ModuleId, MoveIrLoc, Parameter, StructData, StructId, StructVariant,
         TypeParameter, TypeParameterKind,
     },
@@ -59,18 +59,18 @@ macro_rules! abort_if_missing {
     };
 }
 
-struct BracketGroupIdGenerator {
+struct AttributeGroupIdGenerator {
     next: u16,
 }
 
-impl BracketGroupIdGenerator {
+impl AttributeGroupIdGenerator {
     fn new() -> Self {
         Self { next: 0 }
     }
 
-    fn next(&mut self) -> BracketGroupId {
-        let id = BracketGroupId::new(self.next);
-        self.next = self.next.checked_add(1).expect("BracketGroupId overflow");
+    fn next(&mut self) -> AttributeGroupId {
+        let id = AttributeGroupId::new(self.next);
+        self.next = self.next.checked_add(1).expect("AttributeGroupId overflow");
         id
     }
 }
@@ -482,24 +482,24 @@ impl<'a> BinaryModuleLoader<'a> {
 
         // add attributes to the function
         let mut attributes = vec![];
-        let mut group_ids = BracketGroupIdGenerator::new();
+        let mut group_ids = AttributeGroupIdGenerator::new();
         // Helper closure to add an attribute, optionally with a u16 value parameter
         let mut add_attribute = |well_known_name: &str, value: Option<u16>| {
-            let bracket_group_id = group_ids.next();
+            let attribute_group_id = group_ids.next();
             let node_id = self.env.new_node(loc.clone(), Type::Tuple(vec![]));
             let sym = self.env.symbol_pool().make(well_known_name);
             if let Some(v) = value {
                 let attribute_value =
                     AttributeValue::Value(node_id, Value::Number(BigInt::from(v)));
                 attributes.push(Attribute::Assign {
-                    bracket_group_id,
+                    attribute_group_id,
                     node_id,
                     name: sym,
                     value: attribute_value,
                 });
             } else {
                 attributes.push(Attribute::Apply {
-                    bracket_group_id,
+                    attribute_group_id,
                     node_id,
                     name: sym,
                     attrs: vec![],

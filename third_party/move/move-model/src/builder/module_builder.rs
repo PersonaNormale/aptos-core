@@ -23,7 +23,7 @@ use crate::{
     intrinsics::process_intrinsic_declaration,
     metadata::lang_feature_versions::LANGUAGE_VERSION_FOR_PUBLIC_STRUCT,
     model::{
-        self, BracketGroupId, EqIgnoringLoc, FieldData, FieldId, FunId, FunctionData, FunctionKind,
+        self, AttributeGroupId, EqIgnoringLoc, FieldData, FieldId, FunId, FunctionData, FunctionKind,
         FunctionLoc, Loc, ModuleId, MoveIrLoc, NamedConstantData, NamedConstantId, NodeId,
         Parameter, SchemaId, SpecFunId, SpecVarId, StructData, StructId, TypeParameter,
         TypeParameterKind, UserId,
@@ -406,7 +406,7 @@ impl ModuleBuilder<'_, '_> {
     }
 
     pub fn translate_attribute(&mut self, attr: &EA::Attribute) -> Attribute {
-        let bracket_group_id = BracketGroupId::new(attr.bracket_group_id.as_u16());
+        let attribute_group_id = AttributeGroupId::new(attr.attribute_group_id.as_u16());
         let node_id = self
             .parent
             .env
@@ -415,7 +415,7 @@ impl ModuleBuilder<'_, '_> {
             EA::Attribute_::Name(n) => {
                 let sym = self.symbol_pool().make(n.value.as_str());
                 Attribute::Apply {
-                    bracket_group_id,
+                    attribute_group_id,
                     node_id,
                     name: sym,
                     attrs: vec![],
@@ -424,7 +424,7 @@ impl ModuleBuilder<'_, '_> {
             EA::Attribute_::Parameterized(n, vs) => {
                 let sym = self.symbol_pool().make(n.value.as_str());
                 Attribute::Apply {
-                    bracket_group_id,
+                    attribute_group_id,
                     node_id,
                     name: sym,
                     attrs: self.translate_attributes(vs),
@@ -490,7 +490,7 @@ impl ModuleBuilder<'_, '_> {
                     },
                 };
                 Attribute::Assign {
-                    bracket_group_id,
+                    attribute_group_id,
                     node_id,
                     name: self.symbol_pool().make(n.value.as_str()),
                     value: v,

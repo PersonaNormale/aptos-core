@@ -281,9 +281,9 @@ pub struct SpecVarId(RawIndex);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct NodeId(usize);
 
-/// Identifier for an attribute bracket group, relative to an item's attribute list.
+/// Identifier for an attribute group (one `#[...]` block), relative to an item's attribute list.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct BracketGroupId(u16);
+pub struct AttributeGroupId(u16);
 
 /// A global id. Instances of this type represent unique identifiers relative to `GlobalEnv`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -398,7 +398,7 @@ impl NodeId {
     }
 }
 
-impl BracketGroupId {
+impl AttributeGroupId {
     pub fn new(idx: u16) -> Self {
         Self(idx)
     }

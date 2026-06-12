@@ -585,12 +585,12 @@ fn flatten_attributes(
     attr_position: AttributePosition,
     attributes: Vec<P::Attributes>,
 ) -> E::Attributes {
-    let mut group_ids = BracketGroupIdGenerator::new();
+    let mut group_ids = AttributeGroupIdGenerator::new();
     let mut all_attrs = vec![];
     for attrs in attributes {
-        let bracket_group_id = group_ids.next();
+        let attribute_group_id = group_ids.next();
         for attr in attrs.value {
-            if let Some(attr) = attribute(context, attr_position, bracket_group_id, attr) {
+            if let Some(attr) = attribute(context, attr_position, attribute_group_id, attr) {
                 all_attrs.push(attr);
             }
         }
@@ -598,18 +598,18 @@ fn flatten_attributes(
     unique_attributes(context, attr_position, false, all_attrs, false)
 }
 
-struct BracketGroupIdGenerator {
+struct AttributeGroupIdGenerator {
     next: u16,
 }
 
-impl BracketGroupIdGenerator {
+impl AttributeGroupIdGenerator {
     fn new() -> Self {
         Self { next: 0 }
     }
 
-    fn next(&mut self) -> E::BracketGroupId {
-        let id = E::BracketGroupId::new(self.next);
-        self.next = self.next.checked_add(1).expect("BracketGroupId overflow");
+    fn next(&mut self) -> E::AttributeGroupId {
+        let id = E::AttributeGroupId::new(self.next);
+        self.next = self.next.checked_add(1).expect("AttributeGroupId overflow");
         id
     }
 }
@@ -737,18 +737,18 @@ fn add_unique_attribute(
 fn attribute(
     context: &mut Context,
     attr_position: AttributePosition,
-    bracket_group_id: E::BracketGroupId,
+    attribute_group_id: E::AttributeGroupId,
     sp!(loc, attribute_): P::Attribute,
 ) -> Option<E::Attribute> {
     use E::Attribute_ as EA;
     use P::Attribute_ as PA;
-    Some(E::Attribute::new(loc, bracket_group_id, match attribute_ {
+    Some(E::Attribute::new(loc, attribute_group_id, match attribute_ {
         PA::Name(n) => EA::Name(n),
         PA::Assigned(n, v) => EA::Assigned(n, Box::new(attribute_value(context, *v)?)),
         PA::Parameterized(n, sp!(_, pattrs_)) => {
             let attrs = pattrs_
                 .into_iter()
-                .map(|a| attribute(context, attr_position, bracket_group_id, a))
+                .map(|a| attribute(context, attr_position, attribute_group_id, a))
                 .collect::<Option<Vec<_>>>()?;
             let is_test = n.value.as_str() == TestingAttribute::TEST;
             EA::Parameterized(

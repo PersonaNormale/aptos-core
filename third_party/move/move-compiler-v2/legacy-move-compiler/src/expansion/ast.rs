@@ -57,9 +57,9 @@ pub enum Attribute_ {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BracketGroupId(u16);
+pub struct AttributeGroupId(u16);
 
-impl BracketGroupId {
+impl AttributeGroupId {
     pub fn new(idx: u16) -> Self {
         Self(idx)
     }
@@ -72,15 +72,15 @@ impl BracketGroupId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attribute {
     pub loc: Loc,
-    pub bracket_group_id: BracketGroupId,
+    pub attribute_group_id: AttributeGroupId,
     pub value: Attribute_,
 }
 
 impl Attribute {
-    pub fn new(loc: Loc, bracket_group_id: BracketGroupId, value: Attribute_) -> Self {
+    pub fn new(loc: Loc, attribute_group_id: AttributeGroupId, value: Attribute_) -> Self {
         Self {
             loc,
-            bracket_group_id,
+            attribute_group_id,
             value,
         }
     }
@@ -89,8 +89,8 @@ impl Attribute {
         self.value.attribute_name()
     }
 
-    pub fn bracket_group_id(&self) -> BracketGroupId {
-        self.bracket_group_id
+    pub fn attribute_group_id(&self) -> AttributeGroupId {
+        self.attribute_group_id
     }
 }
 
@@ -1159,7 +1159,7 @@ impl AstDebug for Attribute {
     fn ast_debug(&self, w: &mut AstWriter) {
         let Attribute {
             loc: _loc,
-            bracket_group_id: _bracket_group_id,
+            attribute_group_id: _attribute_group_id,
             value,
         } = self;
         value.ast_debug(w);
