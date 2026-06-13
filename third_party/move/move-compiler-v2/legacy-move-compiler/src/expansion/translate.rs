@@ -692,7 +692,9 @@ fn unique_attributes(
         let skip_dedup = matches!(
             name_,
             E::AttributeName_::Known(KnownAttribute::Testing(TestingAttribute::Test))
-                | E::AttributeName_::Known(KnownAttribute::Testing(TestingAttribute::ExpectedFailure))
+                | E::AttributeName_::Known(KnownAttribute::Testing(
+                    TestingAttribute::ExpectedFailure
+                ))
         ) || (matches!(name_, E::AttributeName_::Unknown(_)) && is_test_context);
         if skip_dedup {
             attrs.push(attr);
@@ -727,21 +729,25 @@ fn attribute(
 ) -> Option<E::Attribute> {
     use E::Attribute_ as EA;
     use P::Attribute_ as PA;
-    Some(E::Attribute::new(loc, attribute_group_id, match attribute_ {
-        PA::Name(n) => EA::Name(n),
-        PA::Assigned(n, v) => EA::Assigned(n, Box::new(attribute_value(context, *v)?)),
-        PA::Parameterized(n, sp!(_, pattrs_)) => {
-            let attrs = pattrs_
-                .into_iter()
-                .map(|a| attribute(context, attr_position, attribute_group_id, a))
-                .collect::<Option<Vec<_>>>()?;
-            let is_test = n.value.as_str() == TestingAttribute::TEST;
-            EA::Parameterized(
-                n,
-                unique_attributes(context, attr_position, true, attrs, is_test),
-            )
+    Some(E::Attribute::new(
+        loc,
+        attribute_group_id,
+        match attribute_ {
+            PA::Name(n) => EA::Name(n),
+            PA::Assigned(n, v) => EA::Assigned(n, Box::new(attribute_value(context, *v)?)),
+            PA::Parameterized(n, sp!(_, pattrs_)) => {
+                let attrs = pattrs_
+                    .into_iter()
+                    .map(|a| attribute(context, attr_position, attribute_group_id, a))
+                    .collect::<Option<Vec<_>>>()?;
+                let is_test = n.value.as_str() == TestingAttribute::TEST;
+                EA::Parameterized(
+                    n,
+                    unique_attributes(context, attr_position, true, attrs, is_test),
+                )
+            },
         },
-    }))
+    ))
 }
 
 fn check_module_name(context: &mut Context, ident_loc: &Loc, mident: &ModuleIdent) {
