@@ -41,9 +41,9 @@ struct TestRow<'a> {
 }
 
 struct TestAttributeGroup<'a> {
-    tests:    Vec<&'a Attribute>,
+    tests: Vec<&'a Attribute>,
     failures: Vec<&'a Attribute>,
-    others:   Vec<&'a Attribute>,
+    others: Vec<&'a Attribute>,
 }
 
 // Constructs a test plan for each module in `env.target`. This also validates the structure of the
