@@ -146,10 +146,28 @@ fn validate_test_attribute_groups(
     env: &GlobalEnv,
     groups: &BTreeMap<AttributeGroupId, TestAttributeGroup>,
     all_failure_attrs: &[&Attribute],
+    test_only_attr: Option<&Attribute>,
     fn_id_loc: &Loc,
 ) -> bool {
     let mut has_error = false;
     let single_row = groups.len() == 1;
+
+    // test_only in a separate attribute group conflicts with #[test(...)].
+    // If it shares a group with #[test], the unrelated-sibling check below catches it.
+    if let Some(attr) = test_only_attr {
+        if !groups.contains_key(&attr.attribute_group_id()) {
+            let msg = "Function annotated as both #[test(...)] and #[test_only]. You need to \
+                       declare it as either one or the other";
+            let test_only_loc = env.get_node_loc(attr.node_id());
+            let first_test_attr = groups.values().next().unwrap().tests[0];
+            let test_attribute_loc = env.get_node_loc(first_test_attr.node_id());
+            env.error_with_labels(fn_id_loc, "invalid usage of known attribute", vec![
+                (test_only_loc, msg.to_string()),
+                (test_attribute_loc, "Previously annotated here".to_string()),
+            ]);
+            has_error = true;
+        }
+    }
 
     // Structural checks: per-group invariants.
     for group in groups.values() {
@@ -250,28 +268,8 @@ fn build_test_info(
     // All #[expected_failure] attrs in source order (row-local + standalone combined).
     let failure_attrs: Vec<&Attribute> = attrs.iter().filter(|a| a.name() == ef_name).collect();
 
-    // #[test] and #[test_only] conflict: only when test_only is in a separate attribute group.
-    // If test_only shares a group with a #[test], validate_test_attribute_groups handles it
-    // as an unrelated-sibling "invalid parametric test row" error.
-    let mut has_top_error = false;
-    if let Some(test_only_attr) = attrs.iter().find(|a| a.name() == test_only_name) {
-        if !groups.contains_key(&test_only_attr.attribute_group_id()) {
-            let msg = "Function annotated as both #[test(...)] and #[test_only]. You need to \
-                       declare it as either one or the other";
-            let test_only_loc = env.get_node_loc(test_only_attr.node_id());
-            let first_test_attr = groups.values().next().unwrap().tests[0];
-            let test_attribute_loc = env.get_node_loc(first_test_attr.node_id());
-            env.error_with_labels(&fn_id_loc, "invalid usage of known attribute", vec![
-                (test_only_loc, msg.to_string()),
-                (test_attribute_loc, "Previously annotated here".to_string()),
-            ]);
-            has_top_error = true;
-        }
-    }
-
-    let attr_group_error = validate_test_attribute_groups(env, &groups, &failure_attrs, &fn_id_loc);
-
-    if has_top_error || attr_group_error {
+    let test_only_attr = attrs.iter().find(|a| a.name() == test_only_name);
+    if validate_test_attribute_groups(env, &groups, &failure_attrs, test_only_attr, &fn_id_loc) {
         return Vec::new();
     }
 
