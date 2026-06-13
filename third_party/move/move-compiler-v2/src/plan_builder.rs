@@ -23,7 +23,7 @@ use move_core_types::{
 };
 use move_model::{
     ast::{Address, Attribute, AttributeValue, ModuleName, Value},
-    model::{FunctionEnv, GlobalEnv, Loc, ModuleEnv, Parameter},
+    model::{AttributeGroupId, FunctionEnv, GlobalEnv, Loc, ModuleEnv, Parameter},
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
@@ -38,6 +38,12 @@ struct TestRow<'a> {
     index: usize,
     test_attr: &'a Attribute,
     expected_failure_attr: Option<&'a Attribute>,
+}
+
+struct TestAttributeGroup<'a> {
+    tests:    Vec<&'a Attribute>,
+    failures: Vec<&'a Attribute>,
+    others:   Vec<&'a Attribute>,
 }
 
 // Constructs a test plan for each module in `env.target`. This also validates the structure of the
@@ -105,6 +111,35 @@ fn construct_module_test_plan(
             )
         })
     }
+}
+
+fn build_test_attribute_groups<'a>(
+    env: &GlobalEnv,
+    attrs: &'a [Attribute],
+) -> BTreeMap<AttributeGroupId, TestAttributeGroup<'a>> {
+    let test_name = env.symbol_pool().make(TestingAttribute::TEST);
+    let ef_name = env.symbol_pool().make(TestingAttribute::EXPECTED_FAILURE);
+    let mut groups: BTreeMap<AttributeGroupId, TestAttributeGroup> = BTreeMap::new();
+    for attr in attrs {
+        let entry = groups
+            .entry(attr.attribute_group_id())
+            .or_insert_with(|| TestAttributeGroup {
+                tests: Vec::new(),
+                failures: Vec::new(),
+                others: Vec::new(),
+            });
+        if attr.name() == test_name {
+            entry.tests.push(attr);
+        } else if attr.name() == ef_name {
+            entry.failures.push(attr);
+        } else {
+            entry.others.push(attr);
+        }
+    }
+    // Keep only groups that contain at least one #[test].
+    // Groups with only #[expected_failure] or other attrs are not test attribute groups.
+    groups.retain(|_, g| !g.tests.is_empty());
+    groups
 }
 
 fn validate_test_attribute_groups(
