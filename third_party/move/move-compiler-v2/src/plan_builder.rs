@@ -330,7 +330,7 @@ fn build_row_arguments(
     };
 
     // Collect valid parameter names from the function.
-    let param_names: std::collections::BTreeSet<Symbol> = function
+    let param_names: BTreeSet<Symbol> = function
         .get_parameters_ref()
         .iter()
         .map(|Parameter(var, _, _)| *var)
@@ -464,7 +464,7 @@ fn parse_test_attribute(
                 "ICE: We should only be parsing a raw test attribute"
             );
             // Detect duplicate parameter assignment names before collecting.
-            let mut seen: std::collections::BTreeSet<Symbol> = std::collections::BTreeSet::new();
+            let mut seen: BTreeSet<Symbol> = BTreeSet::new();
             let mut has_dup = false;
             for inner in vec {
                 if let Attribute::Assign { name, node_id, .. } = inner {
