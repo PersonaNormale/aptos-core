@@ -155,7 +155,7 @@ fn validate_test_attribute_groups(
     for group in groups.values() {
         // Exactly one #[test] per attribute group.
         if group.tests.len() > 1 {
-            let loc = env.get_node_loc(group.tests[0].node_id());
+            let loc = env.get_node_loc(group.tests[1].node_id());
             env.error_with_labels(fn_id_loc, "invalid parametric test row", vec![(
                 loc,
                 "A test attribute group must contain exactly one #[test]".to_string(),
