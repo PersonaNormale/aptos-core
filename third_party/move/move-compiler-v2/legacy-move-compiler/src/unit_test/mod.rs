@@ -50,7 +50,7 @@ pub struct TestCase {
     pub expected_failure: Option<ExpectedFailure>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ExpectedFailure {
     // expected failure, but codes are not checked
     Expected,
