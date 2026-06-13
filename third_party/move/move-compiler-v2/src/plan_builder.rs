@@ -276,30 +276,20 @@ fn build_test_info(
     let rows = build_test_rows(&groups, &failure_attrs);
     let row_count = rows.len();
     let single_row = row_count == 1;
-    let mut out = Vec::with_capacity(row_count);
-    for row in rows {
-        let arguments = build_row_arguments(env, row.test_attr, &function, &fn_id_loc);
-        let case_name = if single_row {
-            fn_name_str.to_string()
-        } else {
-            format!("{}@row{}", fn_name_str, row.index)
-        };
-        let expected_failure = row
-            .expected_failure_attr
-            .and_then(|attr| parse_failure_attribute(env, current_module, attr));
-        out.push((case_name, TestCase {
-            function_name: fn_name_str.to_string(),
-            arguments,
-            expected_failure,
-        }));
-    }
 
-    // Zero-argument redundancy check: multiple rows on a zero-arg function must differ
-    // by expected_failure (otherwise they are identical test cases).
+    // Pass 1: parse expected failures for all rows.
+    let parsed_failures: Vec<Option<ExpectedFailure>> = rows
+        .iter()
+        .map(|row| {
+            row.expected_failure_attr
+                .and_then(|attr| parse_failure_attribute(env, current_module, attr))
+        })
+        .collect();
+
+    // Zero-arg distinctness: validate before building any arguments.
     if row_count > 1 && function.get_parameters_ref().is_empty() {
-        let distinct_expected_failures: BTreeSet<&Option<ExpectedFailure>> =
-            out.iter().map(|(_, tc)| &tc.expected_failure).collect();
-        if distinct_expected_failures.len() < out.len() {
+        let distinct: BTreeSet<&Option<ExpectedFailure>> = parsed_failures.iter().collect();
+        if distinct.len() < row_count {
             let loc = env.get_node_loc(groups.values().next().unwrap().tests[0].node_id());
             env.error_with_labels(
                 &fn_id_loc,
@@ -313,7 +303,23 @@ fn build_test_info(
         }
     }
 
-    out
+    // Pass 2: build arguments and construct test cases.
+    rows.iter()
+        .zip(parsed_failures)
+        .map(|(row, expected_failure)| {
+            let arguments = build_row_arguments(env, row.test_attr, &function, &fn_id_loc);
+            let case_name = if single_row {
+                fn_name_str.to_string()
+            } else {
+                format!("{}@row{}", fn_name_str, row.index)
+            };
+            (case_name, TestCase {
+                function_name: fn_name_str.to_string(),
+                arguments,
+                expected_failure,
+            })
+        })
+        .collect()
 }
 
 fn build_row_arguments(
