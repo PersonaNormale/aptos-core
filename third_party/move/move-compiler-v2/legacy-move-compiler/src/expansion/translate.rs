@@ -619,9 +619,10 @@ fn unique_attributes(
     attr_position: AttributePosition,
     is_nested: bool,
     attributes: impl IntoIterator<Item = E::Attribute>,
-    allow_unknown_dups: bool,
+    is_test_context: bool,
 ) -> E::Attributes {
-    let mut attr_map = UniqueMap::new();
+    let mut attrs = vec![];
+    let mut seen: BTreeMap<E::AttributeName_, Loc> = BTreeMap::new();
     for attr in attributes {
         let loc = attr.loc;
         let sp!(nloc, sym) = *attr.attribute_name();
@@ -688,50 +689,34 @@ fn unique_attributes(
                 E::AttributeName_::Known(known)
             },
         };
-        add_unique_attribute(
-            context,
-            &mut attr_map,
-            nloc,
+        let skip_dedup = matches!(
             name_,
-            loc,
-            attr,
-            allow_unknown_dups,
-        );
+            E::AttributeName_::Known(KnownAttribute::Testing(TestingAttribute::Test))
+                | E::AttributeName_::Known(KnownAttribute::Testing(TestingAttribute::ExpectedFailure))
+        ) || (matches!(name_, E::AttributeName_::Unknown(_)) && is_test_context);
+        if skip_dedup {
+            attrs.push(attr);
+        } else {
+            match seen.entry(name_) {
+                std::collections::btree_map::Entry::Vacant(e) => {
+                    e.insert(nloc);
+                    attrs.push(attr);
+                },
+                std::collections::btree_map::Entry::Occupied(e) => {
+                    let msg = format!(
+                        "Duplicate attribute '{}' attached to the same item",
+                        e.key()
+                    );
+                    context.env.add_diag(diag!(
+                        Declarations::DuplicateItem,
+                        (loc, msg),
+                        (*e.get(), "Attribute previously given here"),
+                    ));
+                },
+            }
+        }
     }
-    attr_map
-}
-
-fn add_unique_attribute(
-    context: &mut Context,
-    attr_map: &mut E::Attributes,
-    name_loc: Loc,
-    name_: E::AttributeName_,
-    attr_loc: Loc,
-    attr_: E::Attribute,
-    allow_unknown_dups: bool,
-) {
-    let synthetic_prefix = match &name_ {
-        E::AttributeName_::Known(KnownAttribute::Testing(TestingAttribute::Test)) => {
-            Some("$test_row_")
-        },
-        E::AttributeName_::Known(KnownAttribute::Testing(TestingAttribute::ExpectedFailure)) => {
-            Some("$expected_failure_")
-        },
-        E::AttributeName_::Unknown(_) if allow_unknown_dups => Some("$test_arg_"),
-        _ => None,
-    };
-    if let Some(prefix) = synthetic_prefix {
-        let synthetic = Symbol::from(format!("{}{}", prefix, attr_map.len()));
-        let synthetic_key = sp(name_loc, E::AttributeName_::Unknown(synthetic));
-        let _ = attr_map.add(synthetic_key, attr_);
-    } else if let Err((_, old_loc)) = attr_map.add(sp(name_loc, name_), attr_) {
-        let msg = format!("Duplicate attribute '{}' attached to the same item", name_);
-        context.env.add_diag(diag!(
-            Declarations::DuplicateItem,
-            (attr_loc, msg),
-            (old_loc, "Attribute previously given here"),
-        ));
-    }
+    attrs
 }
 
 fn attribute(
