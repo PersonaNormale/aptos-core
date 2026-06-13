@@ -197,8 +197,7 @@ fn validate_test_attribute_groups(
                      — use row-local syntax instead",
                     vec![(
                         loc,
-                        "Place this inside the attribute group of its #[test(...)] row"
-                            .to_string(),
+                        "Place this inside the attribute group of its #[test(...)] row".to_string(),
                     )],
                 );
                 has_error = true;
@@ -249,10 +248,7 @@ fn build_test_info(
     }
 
     // All #[expected_failure] attrs in source order (row-local + standalone combined).
-    let failure_attrs: Vec<&Attribute> = attrs
-        .iter()
-        .filter(|a| a.name() == ef_name)
-        .collect();
+    let failure_attrs: Vec<&Attribute> = attrs.iter().filter(|a| a.name() == ef_name).collect();
 
     // #[test] and #[test_only] conflict: only when test_only is in a separate attribute group.
     // If test_only shares a group with a #[test], validate_test_attribute_groups handles it
@@ -273,8 +269,7 @@ fn build_test_info(
         }
     }
 
-    let attr_group_error =
-        validate_test_attribute_groups(env, &groups, &failure_attrs, &fn_id_loc);
+    let attr_group_error = validate_test_attribute_groups(env, &groups, &failure_attrs, &fn_id_loc);
 
     if has_top_error || attr_group_error {
         return Vec::new();
