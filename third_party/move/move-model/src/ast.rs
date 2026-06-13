@@ -8,9 +8,9 @@
 use crate::{
     exp_rewriter::ExpRewriterFunctions,
     model::{
-        EnvDisplay, FieldId, FunId, FunctionEnv, GlobalEnv, GlobalId, Loc, ModuleId, NodeId,
-        Parameter, QualifiedId, QualifiedInstId, SchemaId, SpecFunId, StructId, TypeParameter,
-        GHOST_MEMORY_PREFIX, SCRIPT_MODULE_NAME,
+        AttributeGroupId, EnvDisplay, FieldId, FunId, FunctionEnv, GlobalEnv, GlobalId, Loc,
+        ModuleId, NodeId, Parameter, QualifiedId, QualifiedInstId, SchemaId, SpecFunId, StructId,
+        TypeParameter, GHOST_MEMORY_PREFIX, SCRIPT_MODULE_NAME,
     },
     symbol::{Symbol, SymbolPool},
     ty::{ReferenceKind, Type, TypeDisplayContext},
@@ -119,14 +119,24 @@ pub enum AttributeValue {
 
 #[derive(Debug, Clone)]
 pub enum Attribute {
-    Apply(NodeId, Symbol, Vec<Attribute>),
-    Assign(NodeId, Symbol, AttributeValue),
+    Apply {
+        attribute_group_id: AttributeGroupId,
+        node_id: NodeId,
+        name: Symbol,
+        attrs: Vec<Attribute>,
+    },
+    Assign {
+        attribute_group_id: AttributeGroupId,
+        node_id: NodeId,
+        name: Symbol,
+        value: AttributeValue,
+    },
 }
 
 impl Attribute {
     pub fn name(&self) -> Symbol {
         match self {
-            Attribute::Assign(_, s, _) | Attribute::Apply(_, s, _) => *s,
+            Attribute::Assign { name, .. } | Attribute::Apply { name, .. } => *name,
         }
     }
 
@@ -136,7 +146,18 @@ impl Attribute {
 
     pub fn node_id(&self) -> NodeId {
         match self {
-            Attribute::Assign(id, _, _) | Attribute::Apply(id, _, _) => *id,
+            Attribute::Assign { node_id, .. } | Attribute::Apply { node_id, .. } => *node_id,
+        }
+    }
+
+    pub fn attribute_group_id(&self) -> AttributeGroupId {
+        match self {
+            Attribute::Assign {
+                attribute_group_id, ..
+            }
+            | Attribute::Apply {
+                attribute_group_id, ..
+            } => *attribute_group_id,
         }
     }
 }

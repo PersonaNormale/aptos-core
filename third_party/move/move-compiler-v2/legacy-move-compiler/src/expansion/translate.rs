@@ -23,7 +23,7 @@ use crate::{
     },
     shared::{
         builtins,
-        known_attributes::{AttributeKind, AttributePosition, KnownAttribute},
+        known_attributes::{AttributeKind, AttributePosition, KnownAttribute, TestingAttribute},
         unique_map::UniqueMap,
         CompilationEnv, Identifier, Name, NamedAddressMap, NamedAddressMaps, NumericalAddress,
     },
@@ -585,12 +585,33 @@ fn flatten_attributes(
     attr_position: AttributePosition,
     attributes: Vec<P::Attributes>,
 ) -> E::Attributes {
-    let all_attrs = attributes
-        .into_iter()
-        .flat_map(|attrs| attrs.value)
-        .flat_map(|attr| attribute(context, attr_position, attr))
-        .collect::<Vec<_>>();
-    unique_attributes(context, attr_position, false, all_attrs)
+    let mut group_ids = AttributeGroupIdGenerator::new();
+    let mut all_attrs = vec![];
+    for attrs in attributes {
+        let attribute_group_id = group_ids.next();
+        for attr in attrs.value {
+            if let Some(attr) = attribute(context, attr_position, attribute_group_id, attr) {
+                all_attrs.push(attr);
+            }
+        }
+    }
+    unique_attributes(context, attr_position, false, all_attrs, false)
+}
+
+struct AttributeGroupIdGenerator {
+    next: u16,
+}
+
+impl AttributeGroupIdGenerator {
+    fn new() -> Self {
+        Self { next: 0 }
+    }
+
+    fn next(&mut self) -> E::AttributeGroupId {
+        let id = E::AttributeGroupId::new(self.next);
+        self.next = self.next.checked_add(1).expect("AttributeGroupId overflow");
+        id
+    }
 }
 
 fn unique_attributes(
@@ -598,14 +619,13 @@ fn unique_attributes(
     attr_position: AttributePosition,
     is_nested: bool,
     attributes: impl IntoIterator<Item = E::Attribute>,
+    is_test_context: bool,
 ) -> E::Attributes {
-    let mut attr_map = UniqueMap::new();
-    for sp!(loc, attr_) in attributes {
-        let sp!(nloc, sym) = match &attr_ {
-            E::Attribute_::Name(n)
-            | E::Attribute_::Assigned(n, _)
-            | E::Attribute_::Parameterized(n, _) => *n,
-        };
+    let mut attrs = vec![];
+    let mut seen: BTreeMap<E::AttributeName_, Loc> = BTreeMap::new();
+    for attr in attributes {
+        let loc = attr.loc;
+        let sp!(nloc, sym) = *attr.attribute_name();
         let name_ = match KnownAttribute::resolve(sym) {
             None => {
                 let flags = &context.env.flags();
@@ -669,36 +689,65 @@ fn unique_attributes(
                 E::AttributeName_::Known(known)
             },
         };
-        if let Err((_, old_loc)) = attr_map.add(sp(nloc, name_), sp(loc, attr_)) {
-            let msg = format!("Duplicate attribute '{}' attached to the same item", name_);
-            context.env.add_diag(diag!(
-                Declarations::DuplicateItem,
-                (loc, msg),
-                (old_loc, "Attribute previously given here"),
-            ));
+        let skip_dedup = matches!(
+            name_,
+            E::AttributeName_::Known(KnownAttribute::Testing(TestingAttribute::Test))
+                | E::AttributeName_::Known(KnownAttribute::Testing(
+                    TestingAttribute::ExpectedFailure
+                ))
+        ) || (matches!(name_, E::AttributeName_::Unknown(_)) && is_test_context);
+        if skip_dedup {
+            attrs.push(attr);
+        } else {
+            match seen.entry(name_) {
+                std::collections::btree_map::Entry::Vacant(e) => {
+                    e.insert(nloc);
+                    attrs.push(attr);
+                },
+                std::collections::btree_map::Entry::Occupied(e) => {
+                    let msg = format!(
+                        "Duplicate attribute '{}' attached to the same item",
+                        e.key()
+                    );
+                    context.env.add_diag(diag!(
+                        Declarations::DuplicateItem,
+                        (loc, msg),
+                        (*e.get(), "Attribute previously given here"),
+                    ));
+                },
+            }
         }
     }
-    attr_map
+    attrs
 }
 
 fn attribute(
     context: &mut Context,
     attr_position: AttributePosition,
+    attribute_group_id: E::AttributeGroupId,
     sp!(loc, attribute_): P::Attribute,
 ) -> Option<E::Attribute> {
     use E::Attribute_ as EA;
     use P::Attribute_ as PA;
-    Some(sp(loc, match attribute_ {
-        PA::Name(n) => EA::Name(n),
-        PA::Assigned(n, v) => EA::Assigned(n, Box::new(attribute_value(context, *v)?)),
-        PA::Parameterized(n, sp!(_, pattrs_)) => {
-            let attrs = pattrs_
-                .into_iter()
-                .map(|a| attribute(context, attr_position, a))
-                .collect::<Option<Vec<_>>>()?;
-            EA::Parameterized(n, unique_attributes(context, attr_position, true, attrs))
+    Some(E::Attribute::new(
+        loc,
+        attribute_group_id,
+        match attribute_ {
+            PA::Name(n) => EA::Name(n),
+            PA::Assigned(n, v) => EA::Assigned(n, Box::new(attribute_value(context, *v)?)),
+            PA::Parameterized(n, sp!(_, pattrs_)) => {
+                let attrs = pattrs_
+                    .into_iter()
+                    .map(|a| attribute(context, attr_position, attribute_group_id, a))
+                    .collect::<Option<Vec<_>>>()?;
+                let is_test = n.value.as_str() == TestingAttribute::TEST;
+                EA::Parameterized(
+                    n,
+                    unique_attributes(context, attr_position, true, attrs, is_test),
+                )
+            },
         },
-    }))
+    ))
 }
 
 fn check_module_name(context: &mut Context, ident_loc: &Loc, mident: &ModuleIdent) {

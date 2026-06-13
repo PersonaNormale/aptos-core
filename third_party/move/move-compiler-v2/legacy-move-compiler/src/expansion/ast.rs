@@ -55,7 +55,44 @@ pub enum Attribute_ {
     Assigned(Name, Box<AttributeValue>),
     Parameterized(Name, Attributes),
 }
-pub type Attribute = Spanned<Attribute_>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AttributeGroupId(u16);
+
+impl AttributeGroupId {
+    pub fn new(idx: u16) -> Self {
+        Self(idx)
+    }
+
+    pub fn as_u16(self) -> u16 {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attribute {
+    pub loc: Loc,
+    pub attribute_group_id: AttributeGroupId,
+    pub value: Attribute_,
+}
+
+impl Attribute {
+    pub fn new(loc: Loc, attribute_group_id: AttributeGroupId, value: Attribute_) -> Self {
+        Self {
+            loc,
+            attribute_group_id,
+            value,
+        }
+    }
+
+    pub fn attribute_name(&self) -> &Name {
+        self.value.attribute_name()
+    }
+
+    pub fn attribute_group_id(&self) -> AttributeGroupId {
+        self.attribute_group_id
+    }
+}
 
 impl Attribute_ {
     pub fn attribute_name(&self) -> &Name {
@@ -74,7 +111,7 @@ pub enum AttributeName_ {
 }
 pub type AttributeName = Spanned<AttributeName_>;
 
-pub type Attributes = UniqueMap<AttributeName, Attribute>;
+pub type Attributes = Vec<Attribute>;
 
 //**************************************************************************************************
 // Scripts
@@ -1108,7 +1145,7 @@ impl AstDebug for Attribute_ {
             Attribute_::Parameterized(n, inners) => {
                 w.write(format!("{}", n));
                 w.write("(");
-                w.list(inners, ", ", |w, (_, _, inner)| {
+                w.list(inners, ", ", |w, inner| {
                     inner.ast_debug(w);
                     false
                 });
@@ -1118,10 +1155,21 @@ impl AstDebug for Attribute_ {
     }
 }
 
+impl AstDebug for Attribute {
+    fn ast_debug(&self, w: &mut AstWriter) {
+        let Attribute {
+            loc: _loc,
+            attribute_group_id: _attribute_group_id,
+            value,
+        } = self;
+        value.ast_debug(w);
+    }
+}
+
 impl AstDebug for Attributes {
     fn ast_debug(&self, w: &mut AstWriter) {
         w.write("#[");
-        w.list(self, ", ", |w, (_, _, attr)| {
+        w.list(self, ", ", |w, attr| {
             attr.ast_debug(w);
             false
         });

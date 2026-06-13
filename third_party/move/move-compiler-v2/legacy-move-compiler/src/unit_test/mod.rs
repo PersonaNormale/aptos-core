@@ -44,12 +44,13 @@ pub struct ModuleTestPlan {
 
 #[derive(Debug, Clone)]
 pub struct TestCase {
-    pub test_name: TestName,
+    /// Original Move function name used for VM execution.
+    pub function_name: TestName,
     pub arguments: Vec<MoveValue>,
     pub expected_failure: Option<ExpectedFailure>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ExpectedFailure {
     // expected failure, but codes are not checked
     Expected,

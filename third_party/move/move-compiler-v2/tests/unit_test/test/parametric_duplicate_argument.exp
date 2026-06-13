@@ -1,0 +1,7 @@
+
+Diagnostics:
+error: duplicate test parameter assignment
+  ┌─ tests/unit_test/test/parametric_duplicate_argument.move:4:25
+  │
+4 │     #[test(addr = @0x1, addr = @0x2)]
+  │                         ^^^^^^^^^^^

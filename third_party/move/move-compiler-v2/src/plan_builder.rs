@@ -23,16 +23,28 @@ use move_core_types::{
 };
 use move_model::{
     ast::{Address, Attribute, AttributeValue, ModuleName, Value},
-    model::{FunctionEnv, GlobalEnv, Loc, ModuleEnv, Parameter},
+    model::{AttributeGroupId, FunctionEnv, GlobalEnv, Loc, ModuleEnv, Parameter},
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
 use num::{BigInt, ToPrimitive};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 //***************************************************************************
 // Test Plan Building
 //***************************************************************************
+
+struct TestRow<'a> {
+    index: usize,
+    test_attr: &'a Attribute,
+    expected_failure_attr: Option<&'a Attribute>,
+}
+
+struct TestAttributeGroup<'a> {
+    tests: Vec<&'a Attribute>,
+    failures: Vec<&'a Attribute>,
+    others: Vec<&'a Attribute>,
+}
 
 // Constructs a test plan for each module in `env.target`. This also validates the structure of the
 // attributes as the test plan is constructed.
@@ -71,11 +83,7 @@ fn construct_module_test_plan(
     let current_module = module.get_name();
     let tests: BTreeMap<_, _> = module
         .get_functions()
-        .filter_map(|func| {
-            let func_name = func.get_name_str();
-            build_test_info(env, current_module, func)
-                .map(|test_case| (func_name.clone(), test_case))
-        })
+        .flat_map(|func| build_test_info(env, current_module, func).into_iter())
         .collect();
 
     let module_id = module.get_identifier();
@@ -105,59 +113,255 @@ fn construct_module_test_plan(
     }
 }
 
+fn build_test_attribute_groups<'a>(
+    env: &GlobalEnv,
+    attrs: &'a [Attribute],
+) -> BTreeMap<AttributeGroupId, TestAttributeGroup<'a>> {
+    let test_name = env.symbol_pool().make(TestingAttribute::TEST);
+    let ef_name = env.symbol_pool().make(TestingAttribute::EXPECTED_FAILURE);
+    let mut groups: BTreeMap<AttributeGroupId, TestAttributeGroup> = BTreeMap::new();
+    for attr in attrs {
+        let entry = groups
+            .entry(attr.attribute_group_id())
+            .or_insert_with(|| TestAttributeGroup {
+                tests: Vec::new(),
+                failures: Vec::new(),
+                others: Vec::new(),
+            });
+        if attr.name() == test_name {
+            entry.tests.push(attr);
+        } else if attr.name() == ef_name {
+            entry.failures.push(attr);
+        } else {
+            entry.others.push(attr);
+        }
+    }
+    // Keep only groups that contain at least one #[test].
+    // Groups with only #[expected_failure] or other attrs are not test attribute groups.
+    groups.retain(|_, g| !g.tests.is_empty());
+    groups
+}
+
+fn validate_test_attribute_groups(
+    env: &GlobalEnv,
+    groups: &BTreeMap<AttributeGroupId, TestAttributeGroup>,
+    all_failure_attrs: &[&Attribute],
+    test_only_attr: Option<&Attribute>,
+    fn_id_loc: &Loc,
+) -> bool {
+    let mut has_error = false;
+    let single_row = groups.len() == 1;
+
+    // test_only in a separate attribute group conflicts with #[test(...)].
+    // If it shares a group with #[test], the unrelated-sibling check below catches it.
+    if let Some(attr) = test_only_attr {
+        if !groups.contains_key(&attr.attribute_group_id()) {
+            let msg = "Function annotated as both #[test(...)] and #[test_only]. You need to \
+                       declare it as either one or the other";
+            let test_only_loc = env.get_node_loc(attr.node_id());
+            let first_test_attr = groups.values().next().unwrap().tests[0];
+            let test_attribute_loc = env.get_node_loc(first_test_attr.node_id());
+            env.error_with_labels(fn_id_loc, "invalid usage of known attribute", vec![
+                (test_only_loc, msg.to_string()),
+                (test_attribute_loc, "Previously annotated here".to_string()),
+            ]);
+            has_error = true;
+        }
+    }
+
+    // Structural checks: per-group invariants.
+    for group in groups.values() {
+        // Exactly one #[test] per attribute group.
+        if group.tests.len() > 1 {
+            let loc = env.get_node_loc(group.tests[1].node_id());
+            env.error_with_labels(fn_id_loc, "invalid parametric test row", vec![(
+                loc,
+                "A test attribute group must contain exactly one #[test]".to_string(),
+            )]);
+            has_error = true;
+        }
+        // No unrelated siblings alongside #[test].
+        for sibling in &group.others {
+            let loc = env.get_node_loc(sibling.node_id());
+            env.error_with_labels(fn_id_loc, "invalid parametric test row", vec![(
+                loc,
+                "A test attribute group may only contain #[test] and #[expected_failure]"
+                    .to_string(),
+            )]);
+            has_error = true;
+        }
+    }
+
+    // EF ownership checks.
+    if single_row {
+        // Single-row: total #[expected_failure] count (row-local + standalone) must be <= 1.
+        if all_failure_attrs.len() > 1 {
+            let loc = env.get_node_loc(all_failure_attrs[1].node_id());
+            env.error_with_labels(
+                fn_id_loc,
+                "Multiple #[expected_failure] attributes on a single-row test function",
+                vec![(loc, "Second occurrence here".to_string())],
+            );
+            has_error = true;
+        }
+    } else {
+        // Multi-row: standalone (orphan) top-level EF is forbidden.
+        for failure in all_failure_attrs {
+            if !groups.contains_key(&failure.attribute_group_id()) {
+                let loc = env.get_node_loc(failure.node_id());
+                env.error_with_labels(
+                    fn_id_loc,
+                    "top-level expected_failure is not allowed on a parametric multi-row test \
+                     — use row-local syntax instead",
+                    vec![(
+                        loc,
+                        "Place this inside the attribute group of its #[test(...)] row".to_string(),
+                    )],
+                );
+                has_error = true;
+            }
+        }
+        // Per-group: at most one #[expected_failure] per group.
+        for group in groups.values() {
+            if group.failures.len() > 1 {
+                let loc = env.get_node_loc(group.failures[1].node_id());
+                env.error_with_labels(
+                    fn_id_loc,
+                    "Multiple #[expected_failure] attributes in a single test attribute group",
+                    vec![(loc, "Second occurrence here".to_string())],
+                );
+                has_error = true;
+            }
+        }
+    }
+
+    has_error
+}
+
 fn build_test_info(
     env: &GlobalEnv,
     current_module: &ModuleName,
     function: FunctionEnv,
-) -> Option<TestCase> {
+) -> Vec<(String, TestCase)> {
     let fn_name_str = function.get_name_str();
     let fn_id_loc = function.get_id_loc();
-
     let attrs = function.get_attributes();
-    let expected_failure_name = env.symbol_pool().make(TestingAttribute::EXPECTED_FAILURE);
-    let test_name = env.symbol_pool().make(TestingAttribute::TEST);
+
+    let ef_name = env.symbol_pool().make(TestingAttribute::EXPECTED_FAILURE);
     let test_only_name = env.symbol_pool().make(TestingAttribute::TEST_ONLY);
 
-    let test_attribute_opt = attrs.iter().find(|a| a.name() == test_name);
-    let abort_attribute_opt = attrs.iter().find(|a| a.name() == expected_failure_name);
+    // Single-pass grouping: one entry per #[...] block that contains a #[test].
+    let groups = build_test_attribute_groups(env, &attrs);
 
-    let test_attribute = match test_attribute_opt {
-        None => {
-            // expected failures cannot be annotated on non-#[test] functions
-            if let Some(abort_attribute) = abort_attribute_opt {
-                let fn_msg = "Only functions defined as a test with #[test] can also have an \
-                              #[expected_failure] attribute";
-                let abort_msg = "Attributed as #[expected_failure] here";
-                let abort_id = abort_attribute.node_id();
-                let abort_loc = env.get_node_loc(abort_id);
-                env.error_with_labels(&fn_id_loc, fn_msg, vec![(abort_loc, abort_msg.to_string())]);
-            }
-            return None;
-        },
-        Some(test_attribute) => test_attribute,
-    };
-
-    let test_attribute_id = test_attribute.node_id();
-    let test_attribute_loc = env.get_node_loc(test_attribute_id);
-
-    let test_only_attribute_opt = attrs.iter().find(|a| a.name() == test_only_name);
-
-    // A #[test] function cannot also be annotated #[test_only]
-    if let Some(test_only_attribute) = test_only_attribute_opt {
-        let msg = "Function annotated as both #[test(...)] and #[test_only]. You need to declare \
-                   it as either one or the other";
-        let test_only_id = test_only_attribute.node_id();
-        let test_only_loc = env.get_node_loc(test_only_id);
-        env.error_with_labels(&fn_id_loc, "invalid usage of known attribute", vec![
-            (test_only_loc, msg.to_string()),
-            (
-                test_attribute_loc.clone(),
-                "Previously annotated here".to_string(),
-            ),
-        ]);
+    if groups.is_empty() {
+        // Not a test function. #[expected_failure] on a non-test function is an error.
+        if let Some(abort_attribute) = attrs.iter().find(|a| a.name() == ef_name) {
+            let fn_msg = "Only functions defined as a test with #[test] can also have an \
+                          #[expected_failure] attribute";
+            let abort_msg = "Attributed as #[expected_failure] here";
+            let abort_loc = env.get_node_loc(abort_attribute.node_id());
+            env.error_with_labels(&fn_id_loc, fn_msg, vec![(abort_loc, abort_msg.to_string())]);
+        }
+        return Vec::new();
     }
 
-    let test_annotation_params = parse_test_attribute(env, test_attribute, 0);
+    // All #[expected_failure] attrs in source order (row-local + standalone combined).
+    let failure_attrs: Vec<&Attribute> = attrs.iter().filter(|a| a.name() == ef_name).collect();
+
+    let test_only_attr = attrs.iter().find(|a| a.name() == test_only_name);
+    if validate_test_attribute_groups(env, &groups, &failure_attrs, test_only_attr, &fn_id_loc) {
+        return Vec::new();
+    }
+
+    let rows = build_test_rows(&groups, &failure_attrs);
+    let row_count = rows.len();
+    let single_row = row_count == 1;
+
+    // Pass 1: parse expected failures for all rows.
+    let parsed_failures: Vec<Option<ExpectedFailure>> = rows
+        .iter()
+        .map(|row| {
+            row.expected_failure_attr
+                .and_then(|attr| parse_failure_attribute(env, current_module, attr))
+        })
+        .collect();
+
+    // Zero-arg distinctness: validate before building any arguments.
+    if row_count > 1 && function.get_parameters_ref().is_empty() {
+        let distinct: BTreeSet<&Option<ExpectedFailure>> = parsed_failures.iter().collect();
+        if distinct.len() < row_count {
+            let loc = env.get_node_loc(groups.values().next().unwrap().tests[0].node_id());
+            env.error_with_labels(
+                &fn_id_loc,
+                "Redundant parametric rows on a zero-argument function",
+                vec![(
+                    loc,
+                    "At least one row must carry a differentiating expected_failure".to_string(),
+                )],
+            );
+            return Vec::new();
+        }
+    }
+
+    // Pass 2: build arguments and construct test cases.
+    rows.iter()
+        .zip(parsed_failures)
+        .map(|(row, expected_failure)| {
+            let arguments = build_row_arguments(env, row.test_attr, &function, &fn_id_loc);
+            let case_name = if single_row {
+                fn_name_str.to_string()
+            } else {
+                format!("{}@row{}", fn_name_str, row.index)
+            };
+            (case_name, TestCase {
+                function_name: fn_name_str.to_string(),
+                arguments,
+                expected_failure,
+            })
+        })
+        .collect()
+}
+
+fn build_row_arguments(
+    env: &GlobalEnv,
+    test_attribute: &Attribute,
+    function: &FunctionEnv,
+    fn_id_loc: &Loc,
+) -> Vec<MoveValue> {
+    let test_attribute_loc = env.get_node_loc(test_attribute.node_id());
+    let Some(test_annotation_params) = parse_test_attribute(env, test_attribute, 0) else {
+        return Vec::new();
+    };
+
+    // Collect valid parameter names from the function.
+    let param_names: BTreeSet<Symbol> = function
+        .get_parameters_ref()
+        .iter()
+        .map(|Parameter(var, _, _)| *var)
+        .collect();
+
+    // Check for unknown assignments (names not in the function parameter list).
+    let mut has_unknown = false;
+    if let Attribute::Apply {
+        attrs: inner_attrs, ..
+    } = test_attribute
+    {
+        for inner in inner_attrs {
+            if let Attribute::Assign { name, node_id, .. } = inner {
+                if !param_names.contains(name) {
+                    let loc = env.get_node_loc(*node_id);
+                    env.error_with_labels(fn_id_loc, "unknown test parameter assignment", vec![(
+                        loc,
+                        format!("No parameter named `{}`", env.symbol_pool().string(*name)),
+                    )]);
+                    has_unknown = true;
+                }
+            }
+        }
+    }
+    if has_unknown {
+        return Vec::new();
+    }
 
     let mut arguments = Vec::new();
     for param in function.get_parameters_ref() {
@@ -175,7 +379,7 @@ fn build_test_info(
                 _ => {
                     let err_msg = "Unexpected argument type: expect an address or a signer";
                     let invalid_test = "unable to generate test";
-                    env.error_with_labels(&fn_id_loc, invalid_test, vec![
+                    env.error_with_labels(fn_id_loc, invalid_test, vec![
                         (test_attribute_loc.clone(), err_msg.to_string()),
                         (
                             var_loc.clone(),
@@ -189,7 +393,7 @@ fn build_test_info(
                 let missing_param_msg = "Missing test parameter assignment in test. Expected a \
                                          parameter to be assigned in this attribute";
                 let invalid_test = "unable to generate test";
-                env.error_with_labels(&fn_id_loc, invalid_test, vec![
+                env.error_with_labels(fn_id_loc, invalid_test, vec![
                     (test_attribute_loc.clone(), missing_param_msg.to_string()),
                     (
                         var_loc.clone(),
@@ -199,17 +403,44 @@ fn build_test_info(
             },
         }
     }
+    arguments
+}
 
-    let expected_failure = match abort_attribute_opt {
-        None => None,
-        Some(abort_attribute) => parse_failure_attribute(env, current_module, abort_attribute),
+fn build_test_rows<'a>(
+    groups: &BTreeMap<AttributeGroupId, TestAttributeGroup<'a>>,
+    all_failure_attrs: &[&'a Attribute],
+) -> Vec<TestRow<'a>> {
+    let single_row = groups.len() == 1;
+    // For single-row: the standalone top-level EF (if any) belongs to the one row.
+    let standalone_failure: Option<&'a Attribute> = if single_row {
+        all_failure_attrs
+            .iter()
+            .find(|a| !groups.contains_key(&a.attribute_group_id()))
+            .copied()
+    } else {
+        None
     };
 
-    Some(TestCase {
-        test_name: fn_name_str.to_string(),
-        arguments,
-        expected_failure,
-    })
+    // BTreeMap iteration is in AttributeGroupId order = source attribute-group order.
+    groups
+        .iter()
+        .enumerate()
+        .map(|(index, (_, group))| {
+            // After validation: group.failures.len() is 0 or 1.
+            let expected_failure_attr = if let Some(ef) = group.failures.first() {
+                Some(*ef)
+            } else if single_row {
+                standalone_failure
+            } else {
+                None
+            };
+            TestRow {
+                index,
+                test_attr: group.tests[0],
+                expected_failure_attr,
+            }
+        })
+        .collect()
 }
 
 //***************************************************************************
@@ -220,27 +451,56 @@ fn parse_test_attribute(
     env: &GlobalEnv,
     test_attribute: &Attribute,
     depth: usize,
-) -> BTreeMap<Symbol, MoveValue> {
+) -> Option<BTreeMap<Symbol, MoveValue>> {
     match test_attribute {
-        Attribute::Apply(id, _, _) if depth > 0 => {
+        Attribute::Apply { node_id: id, .. } if depth > 0 => {
             let aloc = env.get_node_loc(*id);
             env.error(&aloc, "Unexpected nested attribute in test declaration");
-            BTreeMap::new()
+            None
         },
-        Attribute::Apply(_id, sym, vec) => {
+        Attribute::Apply {
+            name: sym,
+            attrs: vec,
+            ..
+        } => {
             assert!(
                 *TestingAttribute::TEST == env.symbol_pool().string(*sym).to_string(),
                 "ICE: We should only be parsing a raw test attribute"
             );
-            vec.iter()
-                .flat_map(|attr| parse_test_attribute(env, attr, depth + 1))
-                .collect()
+            // Detect duplicate parameter assignment names before collecting.
+            let mut seen: BTreeSet<Symbol> = BTreeSet::new();
+            let mut has_dup = false;
+            for inner in vec {
+                if let Attribute::Assign { name, node_id, .. } = inner {
+                    if !seen.insert(*name) {
+                        let loc = env.get_node_loc(*node_id);
+                        env.error(&loc, "duplicate test parameter assignment");
+                        has_dup = true;
+                    }
+                }
+            }
+            if has_dup {
+                return None;
+            }
+            let mut combined = BTreeMap::new();
+            for attr in vec {
+                match parse_test_attribute(env, attr, depth + 1) {
+                    None => return None,
+                    Some(partial) => combined.extend(partial),
+                }
+            }
+            Some(combined)
         },
-        Attribute::Assign(id, sym, val) => {
+        Attribute::Assign {
+            node_id: id,
+            name: sym,
+            value: val,
+            ..
+        } => {
             if depth != 1 {
                 let aloc = env.get_node_loc(*id);
                 env.error(&aloc, "Unexpected nested attribute in test declaration");
-                return BTreeMap::new();
+                return None;
             }
 
             let value = match convert_attribute_value_to_move_value(env, val) {
@@ -252,13 +512,13 @@ fn parse_test_attribute(
                         aloc,
                         "Assigned in this attribute".to_string(),
                     )]);
-                    return BTreeMap::new();
+                    return None;
                 },
             };
 
             let mut args = BTreeMap::new();
             args.insert(*sym, value);
-            args
+            Some(args)
         },
     }
 }
@@ -269,7 +529,7 @@ fn parse_failure_attribute(
     expected_attr: &Attribute,
 ) -> Option<ExpectedFailure> {
     match expected_attr {
-        Attribute::Assign(id, _sym, _val) => {
+        Attribute::Assign { node_id: id, .. } => {
             let assign_loc = env.get_node_loc(*id);
             let invalid_assignment_msg = "Invalid expected failure code assignment";
             let expected_msg =
@@ -280,7 +540,12 @@ fn parse_failure_attribute(
             )]);
             None
         },
-        Attribute::Apply(id, sym, attrs) => {
+        Attribute::Apply {
+            node_id: id,
+            name: sym,
+            attrs,
+            ..
+        } => {
             assert!(
                 TestingAttribute::EXPECTED_FAILURE == env.symbol_pool().string(*sym).to_string(),
                 "ICE: We should only be parsing a raw expected failure attribute"
@@ -469,7 +734,12 @@ fn parse_failure_attribute(
 
 fn check_attribute_unassigned(env: &GlobalEnv, kind: &str, attr: Attribute) -> Option<()> {
     match attr {
-        Attribute::Apply(id, sym, vec) => {
+        Attribute::Apply {
+            node_id: id,
+            name: sym,
+            attrs: vec,
+            ..
+        } => {
             assert!(env.symbol_pool().string(sym).to_string() == kind);
             if !vec.is_empty() {
                 let msg = format!(
@@ -483,7 +753,11 @@ fn check_attribute_unassigned(env: &GlobalEnv, kind: &str, attr: Attribute) -> O
                 Some(())
             }
         },
-        Attribute::Assign(id, sym, _) => {
+        Attribute::Assign {
+            node_id: id,
+            name: sym,
+            ..
+        } => {
             assert!(env.symbol_pool().string(sym).to_string() == kind);
             let msg = format!(
                 "Expected no assigned value, e.g. `{}`, for expected failure attribute",
@@ -502,12 +776,17 @@ fn get_assigned_attribute(
     attr: Attribute,
 ) -> Option<(Loc, AttributeValue)> {
     match attr {
-        Attribute::Assign(id, sym, value) => {
+        Attribute::Assign {
+            node_id: id,
+            name: sym,
+            value,
+            ..
+        } => {
             assert!(env.symbol_pool().string(sym).to_string() == kind);
             let loc = env.get_node_loc(id);
             Some((loc, value))
         },
-        Attribute::Apply(id, _sym, _vec) => {
+        Attribute::Apply { node_id: id, .. } => {
             let loc = env.get_node_loc(id);
             let msg = format!(
                 "Expected assigned value, e.g. `{}=...`, for expected failure attribute",
