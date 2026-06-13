@@ -144,54 +144,77 @@ fn build_test_attribute_groups<'a>(
 
 fn validate_test_attribute_groups(
     env: &GlobalEnv,
-    all_attrs: &[Attribute],
-    test_attrs: &[&Attribute],
+    groups: &BTreeMap<AttributeGroupId, TestAttributeGroup>,
+    all_failure_attrs: &[&Attribute],
     fn_id_loc: &Loc,
 ) -> bool {
-    let test_name = env.symbol_pool().make(TestingAttribute::TEST);
-    let expected_failure_name = env.symbol_pool().make(TestingAttribute::EXPECTED_FAILURE);
-
-    let test_attr_group_ids: std::collections::BTreeSet<move_model::model::AttributeGroupId> =
-        test_attrs.iter().map(|a| a.attribute_group_id()).collect();
-
     let mut has_error = false;
-    let mut reported_multi_test: std::collections::BTreeSet<move_model::model::AttributeGroupId> =
-        std::collections::BTreeSet::new();
+    let single_row = groups.len() == 1;
 
-    // Check 1: no test attribute group contains more than one #[test].
-    for test_attr in test_attrs {
-        let attr_group_id = test_attr.attribute_group_id();
-        if reported_multi_test.contains(&attr_group_id) {
-            continue;
-        }
-        let count = test_attrs
-            .iter()
-            .filter(|a| a.attribute_group_id() == attr_group_id)
-            .count();
-        if count > 1 {
-            reported_multi_test.insert(attr_group_id);
-            let loc = env.get_node_loc(test_attr.node_id());
+    // Structural checks: per-group invariants.
+    for group in groups.values() {
+        // Exactly one #[test] per attribute group.
+        if group.tests.len() > 1 {
+            let loc = env.get_node_loc(group.tests[0].node_id());
             env.error_with_labels(fn_id_loc, "invalid parametric test row", vec![(
                 loc,
                 "A test attribute group must contain exactly one #[test]".to_string(),
             )]);
             has_error = true;
         }
-    }
-
-    // Check 2: no test attribute group contains an attribute other than #[test] or #[expected_failure].
-    for attr in all_attrs {
-        let attr_group_id = attr.attribute_group_id();
-        if !test_attr_group_ids.contains(&attr_group_id) {
-            continue;
-        }
-        if attr.name() != test_name && attr.name() != expected_failure_name {
-            let loc = env.get_node_loc(attr.node_id());
+        // No unrelated siblings alongside #[test].
+        for sibling in &group.others {
+            let loc = env.get_node_loc(sibling.node_id());
             env.error_with_labels(fn_id_loc, "invalid parametric test row", vec![(
                 loc,
-                "A test attribute group may only contain #[test] and #[expected_failure]".to_string(),
+                "A test attribute group may only contain #[test] and #[expected_failure]"
+                    .to_string(),
             )]);
             has_error = true;
+        }
+    }
+
+    // EF ownership checks.
+    if single_row {
+        // Single-row: total #[expected_failure] count (row-local + standalone) must be <= 1.
+        if all_failure_attrs.len() > 1 {
+            let loc = env.get_node_loc(all_failure_attrs[1].node_id());
+            env.error_with_labels(
+                fn_id_loc,
+                "Multiple #[expected_failure] attributes on a single-row test function",
+                vec![(loc, "Second occurrence here".to_string())],
+            );
+            has_error = true;
+        }
+    } else {
+        // Multi-row: standalone (orphan) top-level EF is forbidden.
+        for failure in all_failure_attrs {
+            if !groups.contains_key(&failure.attribute_group_id()) {
+                let loc = env.get_node_loc(failure.node_id());
+                env.error_with_labels(
+                    fn_id_loc,
+                    "top-level expected_failure is not allowed on a parametric multi-row test \
+                     — use row-local syntax instead",
+                    vec![(
+                        loc,
+                        "Place this inside the attribute group of its #[test(...)] row"
+                            .to_string(),
+                    )],
+                );
+                has_error = true;
+            }
+        }
+        // Per-group: at most one #[expected_failure] per group.
+        for group in groups.values() {
+            if group.failures.len() > 1 {
+                let loc = env.get_node_loc(group.failures[1].node_id());
+                env.error_with_labels(
+                    fn_id_loc,
+                    "Multiple #[expected_failure] attributes in a single test attribute group",
+                    vec![(loc, "Second occurrence here".to_string())],
+                );
+                has_error = true;
+            }
         }
     }
 
@@ -205,69 +228,59 @@ fn build_test_info(
 ) -> Vec<(String, TestCase)> {
     let fn_name_str = function.get_name_str();
     let fn_id_loc = function.get_id_loc();
-
     let attrs = function.get_attributes();
-    let expected_failure_name = env.symbol_pool().make(TestingAttribute::EXPECTED_FAILURE);
-    let test_name = env.symbol_pool().make(TestingAttribute::TEST);
+
+    let ef_name = env.symbol_pool().make(TestingAttribute::EXPECTED_FAILURE);
     let test_only_name = env.symbol_pool().make(TestingAttribute::TEST_ONLY);
 
-    let test_attrs: Vec<&Attribute> = attrs.iter().filter(|a| a.name() == test_name).collect();
-    let failure_attrs: Vec<&Attribute> = attrs
-        .iter()
-        .filter(|a| a.name() == expected_failure_name)
-        .collect();
+    // Single-pass grouping: one entry per #[...] block that contains a #[test].
+    let groups = build_test_attribute_groups(env, &attrs);
 
-    if test_attrs.is_empty() {
-        // expected failures cannot be annotated on non-#[test] functions
-        if let Some(abort_attribute) = failure_attrs.first() {
+    if groups.is_empty() {
+        // Not a test function. #[expected_failure] on a non-test function is an error.
+        if let Some(abort_attribute) = attrs.iter().find(|a| a.name() == ef_name) {
             let fn_msg = "Only functions defined as a test with #[test] can also have an \
                           #[expected_failure] attribute";
             let abort_msg = "Attributed as #[expected_failure] here";
-            let abort_id = abort_attribute.node_id();
-            let abort_loc = env.get_node_loc(abort_id);
+            let abort_loc = env.get_node_loc(abort_attribute.node_id());
             env.error_with_labels(&fn_id_loc, fn_msg, vec![(abort_loc, abort_msg.to_string())]);
         }
         return Vec::new();
     }
 
-    // Compute test attribute group IDs before the test_only check.
-    let test_attr_group_ids: std::collections::BTreeSet<move_model::model::AttributeGroupId> =
-        test_attrs.iter().map(|a| a.attribute_group_id()).collect();
+    // All #[expected_failure] attrs in source order (row-local + standalone combined).
+    let failure_attrs: Vec<&Attribute> = attrs
+        .iter()
+        .filter(|a| a.name() == ef_name)
+        .collect();
 
-    let test_only_attribute_opt = attrs.iter().find(|a| a.name() == test_only_name);
+    // #[test] and #[test_only] conflict: only when test_only is in a separate attribute group.
+    // If test_only shares a group with a #[test], validate_test_attribute_groups handles it
+    // as an unrelated-sibling "invalid parametric test row" error.
     let mut has_top_error = false;
-
-    // A #[test] function cannot also be annotated #[test_only].
-    // Emit the legacy conflict error ONLY when test_only is in a DIFFERENT attribute group from all
-    // test attrs.  If test_only shares a group with a #[test], validate_test_attribute_groups handles it
-    // as an "invalid parametric test row" unrelated-sibling error.
-    if let Some(test_only_attribute) = test_only_attribute_opt {
-        if !test_attr_group_ids.contains(&test_only_attribute.attribute_group_id()) {
+    if let Some(test_only_attr) = attrs.iter().find(|a| a.name() == test_only_name) {
+        if !groups.contains_key(&test_only_attr.attribute_group_id()) {
             let msg = "Function annotated as both #[test(...)] and #[test_only]. You need to \
                        declare it as either one or the other";
-            let test_only_id = test_only_attribute.node_id();
-            let test_only_loc = env.get_node_loc(test_only_id);
-            let test_attribute_loc = env.get_node_loc(test_attrs[0].node_id());
+            let test_only_loc = env.get_node_loc(test_only_attr.node_id());
+            let first_test_attr = groups.values().next().unwrap().tests[0];
+            let test_attribute_loc = env.get_node_loc(first_test_attr.node_id());
             env.error_with_labels(&fn_id_loc, "invalid usage of known attribute", vec![
                 (test_only_loc, msg.to_string()),
-                (
-                    test_attribute_loc.clone(),
-                    "Previously annotated here".to_string(),
-                ),
+                (test_attribute_loc, "Previously annotated here".to_string()),
             ]);
             has_top_error = true;
         }
     }
 
-    let attr_group_error = validate_test_attribute_groups(env, &attrs, &test_attrs, &fn_id_loc);
+    let attr_group_error =
+        validate_test_attribute_groups(env, &groups, &failure_attrs, &fn_id_loc);
 
     if has_top_error || attr_group_error {
         return Vec::new();
     }
 
-    let Some(rows) = build_test_rows(env, &test_attrs, &failure_attrs, &fn_id_loc) else {
-        return Vec::new();
-    };
+    let rows = build_test_rows(&groups, &failure_attrs);
     let row_count = rows.len();
     let single_row = row_count == 1;
     let mut out = Vec::with_capacity(row_count);
@@ -288,11 +301,13 @@ fn build_test_info(
         }));
     }
 
+    // Zero-argument redundancy check: multiple rows on a zero-arg function must differ
+    // by expected_failure (otherwise they are identical test cases).
     if row_count > 1 && function.get_parameters_ref().is_empty() {
         let distinct_expected_failures: BTreeSet<&Option<ExpectedFailure>> =
             out.iter().map(|(_, tc)| &tc.expected_failure).collect();
         if distinct_expected_failures.len() < out.len() {
-            let loc = env.get_node_loc(test_attrs[0].node_id());
+            let loc = env.get_node_loc(groups.values().next().unwrap().tests[0].node_id());
             env.error_with_labels(
                 &fn_id_loc,
                 "Redundant parametric rows on a zero-argument function",
@@ -393,87 +408,40 @@ fn build_row_arguments(
 }
 
 fn build_test_rows<'a>(
-    env: &GlobalEnv,
-    test_attrs: &[&'a Attribute],
-    failure_attrs: &[&'a Attribute],
-    fn_id_loc: &Loc,
-) -> Option<Vec<TestRow<'a>>> {
-    let single_row = test_attrs.len() == 1;
-    let mut test_attrs = test_attrs.to_vec();
-    test_attrs.sort_by_key(|test| test.attribute_group_id());
-    let mut rows = Vec::with_capacity(test_attrs.len());
-    let mut has_error = false;
-
-    if single_row {
-        // Count all expected_failure attrs (row-local + top-level combined).
-        // A single-row test must have at most one #[expected_failure] anywhere.
-        if failure_attrs.len() > 1 {
-            let loc = env.get_node_loc(failure_attrs[1].node_id());
-            env.error_with_labels(
-                fn_id_loc,
-                "Multiple #[expected_failure] attributes on a single-row test function",
-                vec![(loc, "Second occurrence here".to_string())],
-            );
-            has_error = true;
-        }
-    }
-
-    if !single_row {
-        for failure in failure_attrs {
-            if !test_attrs
-                .iter()
-                .any(|test| test.attribute_group_id() == failure.attribute_group_id())
-            {
-                let loc = env.get_node_loc(failure.node_id());
-                env.error_with_labels(
-                    fn_id_loc,
-                    "top-level expected_failure is not allowed on a parametric multi-row test — use row-local syntax instead",
-                    vec![(
-                        loc,
-                        "Place this inside the attribute group of its #[test(...)] row".to_string(),
-                    )],
-                );
-                has_error = true;
-            }
-        }
-    }
-
-    for (index, test_attr) in test_attrs.into_iter().enumerate() {
-        let same_attr_group = failure_attrs
+    groups: &BTreeMap<AttributeGroupId, TestAttributeGroup<'a>>,
+    all_failure_attrs: &[&'a Attribute],
+) -> Vec<TestRow<'a>> {
+    let single_row = groups.len() == 1;
+    // For single-row: the standalone top-level EF (if any) belongs to the one row.
+    let standalone_failure: Option<&'a Attribute> = if single_row {
+        all_failure_attrs
             .iter()
+            .find(|a| !groups.contains_key(&a.attribute_group_id()))
             .copied()
-            .filter(|failure| failure.attribute_group_id() == test_attr.attribute_group_id())
-            .collect::<Vec<_>>();
-
-        if same_attr_group.len() > 1 {
-            let loc = env.get_node_loc(same_attr_group[1].node_id());
-            env.error_with_labels(
-                fn_id_loc,
-                "Multiple #[expected_failure] attributes in a single test attribute group",
-                vec![(loc, "Second occurrence here".to_string())],
-            );
-            has_error = true;
-        }
-
-        let expected_failure_attr = match same_attr_group.as_slice() {
-            [failure] => Some(*failure),
-            [] if single_row => failure_attrs.first().copied(),
-            [] => None,
-            [first, ..] => Some(*first),
-        };
-
-        rows.push(TestRow {
-            index,
-            test_attr,
-            expected_failure_attr,
-        });
-    }
-
-    if has_error {
-        None
     } else {
-        Some(rows)
-    }
+        None
+    };
+
+    // BTreeMap iteration is in AttributeGroupId order = source attribute-group order.
+    groups
+        .iter()
+        .enumerate()
+        .map(|(index, (_, group))| {
+            // After validation: group.failures.len() is 0 or 1.
+            let expected_failure_attr = if let Some(ef) = group.failures.first() {
+                Some(*ef)
+            } else if single_row {
+                standalone_failure
+            } else {
+                None
+            };
+            TestRow {
+                index,
+                test_attr: group.tests[0],
+                expected_failure_attr,
+            }
+        })
+        .collect()
 }
 
 //***************************************************************************
