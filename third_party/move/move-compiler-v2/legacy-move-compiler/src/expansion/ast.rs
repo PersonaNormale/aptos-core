@@ -111,7 +111,7 @@ pub enum AttributeName_ {
 }
 pub type AttributeName = Spanned<AttributeName_>;
 
-pub type Attributes = UniqueMap<AttributeName, Attribute>;
+pub type Attributes = Vec<Attribute>;
 
 //**************************************************************************************************
 // Scripts
@@ -1145,7 +1145,7 @@ impl AstDebug for Attribute_ {
             Attribute_::Parameterized(n, inners) => {
                 w.write(format!("{}", n));
                 w.write("(");
-                w.list(inners, ", ", |w, (_, _, inner)| {
+                w.list(inners, ", ", |w, inner| {
                     inner.ast_debug(w);
                     false
                 });
@@ -1169,7 +1169,7 @@ impl AstDebug for Attribute {
 impl AstDebug for Attributes {
     fn ast_debug(&self, w: &mut AstWriter) {
         w.write("#[");
-        w.list(self, ", ", |w, (_, _, attr)| {
+        w.list(self, ", ", |w, attr| {
             attr.ast_debug(w);
             false
         });

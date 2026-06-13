@@ -401,7 +401,7 @@ impl ModuleBuilder<'_, '_> {
     pub fn translate_attributes(&mut self, attrs: &EA::Attributes) -> Vec<Attribute> {
         attrs
             .iter()
-            .map(|(_, _, attr)| self.translate_attribute(attr))
+            .map(|attr| self.translate_attribute(attr))
             .collect()
     }
 
