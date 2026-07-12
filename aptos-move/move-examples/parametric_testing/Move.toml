@@ -1,9 +1,9 @@
 [package]
-name = "ParametricShowcaseErrors"
+name = "ParametricTesting"
 version = "0.0.0"
 
 [addresses]
-showcase_err = "_"
+parametric_testing = "_"
 
 [dependencies]
 AptosFramework = { local = "../../framework/aptos-framework" }

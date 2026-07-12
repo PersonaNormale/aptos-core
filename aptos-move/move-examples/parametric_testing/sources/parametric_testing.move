@@ -1,8 +1,9 @@
-/// Parametric test showcase — Layer 1 accepted syntax.
+/// Parametric test.
 ///
-/// Each #[test(...)] bracket is an independent test invocation of the same function.
-/// The compiler emits one TestCase per row; each row executes with its own arguments.
-module showcase::showcase {
+/// Each #[test(...)] attribute is an independent test invocation of the same function.
+/// The compiler emits one test case per test attribute.
+/// Each test attribute executes with its own arguments.
+module parametric_testing::example {
     use std::signer;
 
     // ---------------------------------------------------------------------------
@@ -21,31 +22,33 @@ module showcase::showcase {
     }
 
     // ---------------------------------------------------------------------------
-    // Multi-row, signer parameter
-    // Each row runs the body independently with a different signer.
+    // Signer as parameter.
+    // Each test attribute runs the body independently with a different signer.
     // ---------------------------------------------------------------------------
 
     #[test(account = @0x1)]
     #[test(account = @0x2)]
     #[test(account = @0x3)]
     fun different_signers_are_not_blacklisted(account: signer) {
-        assert!(!blacklisted(owner_of(&account)), 0);
+        assert!(!blacklisted(owner_of(&account)));
     }
 
     // ---------------------------------------------------------------------------
-    // Multi-row, address parameter
+    // Address as parameter
+    // Each test attribute runs the body independently with a different address.
     // ---------------------------------------------------------------------------
 
     #[test(addr = @0x1)]
     #[test(addr = @0x2)]
     #[test(addr = @0x3)]
     fun different_addresses_are_not_blacklisted(addr: address) {
-        assert!(!blacklisted(addr), 0);
+        assert!(!blacklisted(addr));
     }
 
     // ---------------------------------------------------------------------------
-    // Multi-row, row-local expected_failure on some rows
-    // @row0 expects success; @row1 expects the abort.
+    // expected_failure attribute in test attribute.
+    // @row0 expects success.
+    // @row1 expects the abort.
     // ---------------------------------------------------------------------------
 
     #[test(addr = @0x1)]
@@ -55,7 +58,7 @@ module showcase::showcase {
     }
 
     // ---------------------------------------------------------------------------
-    // Multi-row, every row expects failure
+    // Every test attribute expects failure
     // ---------------------------------------------------------------------------
 
     #[test(addr = @0xBAD), expected_failure(abort_code = EBLACKLISTED)]
@@ -65,27 +68,28 @@ module showcase::showcase {
     }
 
     // ---------------------------------------------------------------------------
-    // Two parameters — assignment order in the bracket does NOT matter.
-    // Execution always uses function-signature order (a first, then b).
+    // Two parameters.
+    // Assignment order in the test attribute does NOT matter.
+    // Execution always uses function-signature order (in this case: a first, then b).
     // ---------------------------------------------------------------------------
 
     #[test(b = @0x2, a = @0x1)]
     #[test(a = @0x3, b = @0x4)]
     fun order_insensitive_assignments(a: signer, b: address) {
-        assert!(owner_of(&a) != b, 0);
+        assert!(owner_of(&a) != b);
     }
 
     // ---------------------------------------------------------------------------
-    // Single-row — backward-compatible, identity unchanged (no @row suffix).
+    // Single test attribute (no @row suffix).
     // ---------------------------------------------------------------------------
 
     #[test(account = @0x1)]
     fun single_row_signer(account: signer) {
-        assert!(!blacklisted(owner_of(&account)), 0);
+        assert!(!blacklisted(owner_of(&account)));
     }
 
     // ---------------------------------------------------------------------------
-    // Single-row, row-local expected_failure (inline bracket syntax).
+    // Single test attribute, local expected_failure inline syntax.
     // ---------------------------------------------------------------------------
 
     #[test(addr = @0xBAD), expected_failure(abort_code = EBLACKLISTED)]
@@ -94,7 +98,7 @@ module showcase::showcase {
     }
 
     // ---------------------------------------------------------------------------
-    // Single-row, legacy top-level expected_failure (separate bracket syntax).
+    // Legacy top-level expected_failure separate attribute syntax.
     // ---------------------------------------------------------------------------
 
     #[test(addr = @0xBAD)]
@@ -104,11 +108,11 @@ module showcase::showcase {
     }
 
     // ---------------------------------------------------------------------------
-    // Zero-argument function — single row, no parameters.
+    // Zero argument function single test attribute with no parameters.
     // ---------------------------------------------------------------------------
 
     #[test]
     fun zero_arg_row() {
-        assert!(!blacklisted(@0x1), 0);
+        assert!(!blacklisted(@0x1));
     }
 }
