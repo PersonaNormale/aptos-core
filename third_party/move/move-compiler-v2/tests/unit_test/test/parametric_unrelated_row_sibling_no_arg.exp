@@ -1,9 +1,7 @@
 
 Diagnostics:
-error: invalid parametric test row
-  ┌─ tests/unit_test/test/parametric_unrelated_row_sibling_no_arg.move:5:9
+error: a test attribute group may only contain `#[test]` and `#[expected_failure]`
+  ┌─ tests/unit_test/test/parametric_unrelated_row_sibling_no_arg.move:4:13
   │
 4 │     #[test, deprecated]
-  │             ---------- A test attribute group may only contain #[test] and #[expected_failure]
-5 │     fun unrelated_row_sibling_no_arg() {}
-  │         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  │             ^^^^^^^^^^ not allowed in a test attribute group

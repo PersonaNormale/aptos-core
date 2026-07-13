@@ -1,9 +1,7 @@
+
 Diagnostics:
-error: Redundant parametric rows on a zero-argument function
-  ┌─ tests/unit_test/test/parametric_redundant_zero_arg.move:6:9
+error: redundant parametric rows on a zero-argument function
+  ┌─ tests/unit_test/test/parametric_redundant_zero_arg.move:4:7
   │
 4 │     #[test]
-  │       ---- At least one row must carry a differentiating expected_failure
-5 │     #[test]
-6 │     fun zero_arg_redundant() {}
-  │         ^^^^^^^^^^^^^^^^^^
+  │       ^^^^ at least one row must carry a differentiating `#[expected_failure]`
