@@ -8,45 +8,41 @@ error: Unsupported attribute value
    │            │
    │            Assigned in this attribute
 
-error: unable to generate test
-   ┌─ tests/unit_test/test/multiple_errors.move:28:16
+error: unable to generate test: missing parameter assignment
+   ┌─ tests/unit_test/test/multiple_errors.move:26:7
    │
 26 │     #[test(_a=@0x1)]
-   │       ------------- Missing test parameter assignment in test. Expected a parameter to be assigned in this attribute
+   │       ^^^^^^^^^^^^^ expected a parameter to be assigned in this attribute
 27 │     #[test(_b=@0x2)]
 28 │     public fun d(_a: signer, _b: signer) { }
-   │                ^             -- Corresponding to this parameter
+   │                              -- corresponding to this parameter
 
-error: unable to generate test
-   ┌─ tests/unit_test/test/multiple_errors.move:28:16
+error: unable to generate test: missing parameter assignment
+   ┌─ tests/unit_test/test/multiple_errors.move:27:7
    │
 27 │     #[test(_b=@0x2)]
-   │       ------------- Missing test parameter assignment in test. Expected a parameter to be assigned in this attribute
+   │       ^^^^^^^^^^^^^ expected a parameter to be assigned in this attribute
 28 │     public fun d(_a: signer, _b: signer) { }
-   │                ^ -- Corresponding to this parameter
+   │                  -- corresponding to this parameter
 
-error: invalid usage of known attribute
-   ┌─ tests/unit_test/test/multiple_errors.move:33:16
+error: `#[test_only]` cannot be combined with `#[test(...)]` on the same function
+   ┌─ tests/unit_test/test/multiple_errors.move:32:7
    │
 31 │     #[test(_a=@0x1)]
-   │       ------------- Previously annotated here
+   │       ------------- previously annotated here
 32 │     #[test_only]
-   │       --------- Function annotated as both #[test(...)] and #[test_only]. You need to declare it as either one or the other
-33 │     public fun e(_a: signer, _b: signer) { }
-   │                ^
+   │       ^^^^^^^^^ conflicts with the `#[test(...)]` annotation
 
-error: unable to generate test
-   ┌─ tests/unit_test/test/multiple_errors.move:37:16
+error: unable to generate test: missing parameter assignment
+   ┌─ tests/unit_test/test/multiple_errors.move:36:7
    │
 36 │     #[test(_a=@0x1)]
-   │       ------------- Missing test parameter assignment in test. Expected a parameter to be assigned in this attribute
+   │       ^^^^^^^^^^^^^ expected a parameter to be assigned in this attribute
 37 │     public fun f(_a: signer, _b: signer) { }
-   │                ^             -- Corresponding to this parameter
+   │                              -- corresponding to this parameter
 
-error: Multiple #[expected_failure] attributes on a single-row test function
-   ┌─ tests/unit_test/test/multiple_errors.move:43:16
+error: a single-row test function may only have one `#[expected_failure]`
+   ┌─ tests/unit_test/test/multiple_errors.move:42:7
    │
 42 │     #[expected_failure]
-   │       ---------------- Second occurrence here
-43 │     public fun g(_a: signer, _b: signer) { }
-   │                ^
+   │       ^^^^^^^^^^^^^^^^ second occurrence here

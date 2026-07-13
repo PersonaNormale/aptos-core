@@ -147,7 +147,6 @@ fn validate_test_attribute_groups(
     groups: &BTreeMap<AttributeGroupId, TestAttributeGroup>,
     all_failure_attrs: &[&Attribute],
     test_only_attr: Option<&Attribute>,
-    fn_id_loc: &Loc,
 ) -> bool {
     let mut has_error = false;
     let single_row = groups.len() == 1;
@@ -156,15 +155,16 @@ fn validate_test_attribute_groups(
     // If it shares a group with #[test], the unrelated-sibling check below catches it.
     if let Some(attr) = test_only_attr {
         if !groups.contains_key(&attr.attribute_group_id()) {
-            let msg = "Function annotated as both #[test(...)] and #[test_only]. You need to \
-                       declare it as either one or the other";
             let test_only_loc = env.get_node_loc(attr.node_id());
             let first_test_attr = groups.values().next().unwrap().tests[0];
             let test_attribute_loc = env.get_node_loc(first_test_attr.node_id());
-            env.error_with_labels(fn_id_loc, "invalid usage of known attribute", vec![
-                (test_only_loc, msg.to_string()),
-                (test_attribute_loc, "Previously annotated here".to_string()),
-            ]);
+            env.diag_with_primary_and_labels(
+                Severity::Error,
+                &test_only_loc,
+                "`#[test_only]` cannot be combined with `#[test(...)]` on the same function",
+                "conflicts with the `#[test(...)]` annotation",
+                vec![(test_attribute_loc, "previously annotated here".to_string())],
+            );
             has_error = true;
         }
     }
@@ -174,20 +174,25 @@ fn validate_test_attribute_groups(
         // Exactly one #[test] per attribute group.
         if group.tests.len() > 1 {
             let loc = env.get_node_loc(group.tests[1].node_id());
-            env.error_with_labels(fn_id_loc, "invalid parametric test row", vec![(
-                loc,
-                "A test attribute group must contain exactly one #[test]".to_string(),
-            )]);
+            env.diag_with_primary_and_labels(
+                Severity::Error,
+                &loc,
+                "a test attribute group must contain exactly one `#[test]`",
+                "second `#[test]` in this group",
+                vec![],
+            );
             has_error = true;
         }
         // No unrelated siblings alongside #[test].
         for sibling in &group.others {
             let loc = env.get_node_loc(sibling.node_id());
-            env.error_with_labels(fn_id_loc, "invalid parametric test row", vec![(
-                loc,
-                "A test attribute group may only contain #[test] and #[expected_failure]"
-                    .to_string(),
-            )]);
+            env.diag_with_primary_and_labels(
+                Severity::Error,
+                &loc,
+                "a test attribute group may only contain `#[test]` and `#[expected_failure]`",
+                "not allowed in a test attribute group",
+                vec![],
+            );
             has_error = true;
         }
     }
@@ -197,10 +202,12 @@ fn validate_test_attribute_groups(
         // Single-row: total #[expected_failure] count (row-local + standalone) must be <= 1.
         if all_failure_attrs.len() > 1 {
             let loc = env.get_node_loc(all_failure_attrs[1].node_id());
-            env.error_with_labels(
-                fn_id_loc,
-                "Multiple #[expected_failure] attributes on a single-row test function",
-                vec![(loc, "Second occurrence here".to_string())],
+            env.diag_with_primary_and_labels(
+                Severity::Error,
+                &loc,
+                "a single-row test function may only have one `#[expected_failure]`",
+                "second occurrence here",
+                vec![],
             );
             has_error = true;
         }
@@ -209,14 +216,16 @@ fn validate_test_attribute_groups(
         for failure in all_failure_attrs {
             if !groups.contains_key(&failure.attribute_group_id()) {
                 let loc = env.get_node_loc(failure.node_id());
-                env.error_with_labels(
-                    fn_id_loc,
-                    "top-level expected_failure is not allowed on a parametric multi-row test \
-                     — use row-local syntax instead",
-                    vec![(
-                        loc,
-                        "Place this inside the attribute group of its #[test(...)] row".to_string(),
-                    )],
+                env.diag_with_primary_notes_and_labels(
+                    Severity::Error,
+                    &loc,
+                    "`#[expected_failure]` on a parametric multi-row test must belong to one of its rows",
+                    "not part of any row's attribute group",
+                    vec![
+                        "move this attribute inside the `#[test(...)]` row it applies to"
+                            .to_string(),
+                    ],
+                    vec![],
                 );
                 has_error = true;
             }
@@ -225,10 +234,12 @@ fn validate_test_attribute_groups(
         for group in groups.values() {
             if group.failures.len() > 1 {
                 let loc = env.get_node_loc(group.failures[1].node_id());
-                env.error_with_labels(
-                    fn_id_loc,
-                    "Multiple #[expected_failure] attributes in a single test attribute group",
-                    vec![(loc, "Second occurrence here".to_string())],
+                env.diag_with_primary_and_labels(
+                    Severity::Error,
+                    &loc,
+                    "a test attribute group may only have one `#[expected_failure]`",
+                    "second occurrence here",
+                    vec![],
                 );
                 has_error = true;
             }
@@ -269,7 +280,7 @@ fn build_test_info(
     let failure_attrs: Vec<&Attribute> = attrs.iter().filter(|a| a.name() == ef_name).collect();
 
     let test_only_attr = attrs.iter().find(|a| a.name() == test_only_name);
-    if validate_test_attribute_groups(env, &groups, &failure_attrs, test_only_attr, &fn_id_loc) {
+    if validate_test_attribute_groups(env, &groups, &failure_attrs, test_only_attr) {
         return Vec::new();
     }
 
@@ -291,13 +302,12 @@ fn build_test_info(
         let distinct: BTreeSet<&Option<ExpectedFailure>> = parsed_failures.iter().collect();
         if distinct.len() < row_count {
             let loc = env.get_node_loc(groups.values().next().unwrap().tests[0].node_id());
-            env.error_with_labels(
-                &fn_id_loc,
-                "Redundant parametric rows on a zero-argument function",
-                vec![(
-                    loc,
-                    "At least one row must carry a differentiating expected_failure".to_string(),
-                )],
+            env.diag_with_primary_and_labels(
+                Severity::Error,
+                &loc,
+                "redundant parametric rows on a zero-argument function",
+                "at least one row must carry a differentiating `#[expected_failure]`",
+                vec![],
             );
             return Vec::new();
         }
@@ -307,17 +317,20 @@ fn build_test_info(
     rows.iter()
         .zip(parsed_failures)
         .map(|(row, expected_failure)| {
-            let arguments = build_row_arguments(env, row.test_attr, &function, &fn_id_loc);
+            let arguments = build_row_arguments(env, row.test_attr, &function);
             let case_name = if single_row {
                 fn_name_str.to_string()
             } else {
                 format!("{}@row{}", fn_name_str, row.index)
             };
-            (case_name, TestCase {
-                function_name: fn_name_str.to_string(),
-                arguments,
-                expected_failure,
-            })
+            (
+                case_name,
+                TestCase {
+                    function_name: fn_name_str.to_string(),
+                    arguments,
+                    expected_failure,
+                },
+            )
         })
         .collect()
 }
@@ -326,7 +339,6 @@ fn build_row_arguments(
     env: &GlobalEnv,
     test_attribute: &Attribute,
     function: &FunctionEnv,
-    fn_id_loc: &Loc,
 ) -> Vec<MoveValue> {
     let test_attribute_loc = env.get_node_loc(test_attribute.node_id());
     let Some(test_annotation_params) = parse_test_attribute(env, test_attribute, 0) else {
@@ -350,10 +362,13 @@ fn build_row_arguments(
             if let Attribute::Assign { name, node_id, .. } = inner {
                 if !param_names.contains(name) {
                     let loc = env.get_node_loc(*node_id);
-                    env.error_with_labels(fn_id_loc, "unknown test parameter assignment", vec![(
-                        loc,
-                        format!("No parameter named `{}`", env.symbol_pool().string(*name)),
-                    )]);
+                    env.diag_with_primary_and_labels(
+                        Severity::Error,
+                        &loc,
+                        "unknown test parameter assignment",
+                        &format!("no parameter named `{}`", env.symbol_pool().string(*name)),
+                        vec![],
+                    );
                     has_unknown = true;
                 }
             }
@@ -377,29 +392,30 @@ fn build_row_arguments(
                     arguments.push(MoveValue::Address(*addr))
                 },
                 _ => {
-                    let err_msg = "Unexpected argument type: expect an address or a signer";
-                    let invalid_test = "unable to generate test";
-                    env.error_with_labels(fn_id_loc, invalid_test, vec![
-                        (test_attribute_loc.clone(), err_msg.to_string()),
-                        (
+                    env.diag_with_primary_and_labels(
+                        Severity::Error,
+                        &test_attribute_loc,
+                        "unable to generate test: unexpected argument type",
+                        "expected an `address` or `signer`",
+                        vec![(
                             var_loc.clone(),
-                            "Corresponding to this parameter".to_string(),
-                        ),
-                    ]);
+                            "corresponding to this parameter".to_string(),
+                        )],
+                    );
                 },
             },
             Some(value) => arguments.push(value.clone()),
             None => {
-                let missing_param_msg = "Missing test parameter assignment in test. Expected a \
-                                         parameter to be assigned in this attribute";
-                let invalid_test = "unable to generate test";
-                env.error_with_labels(fn_id_loc, invalid_test, vec![
-                    (test_attribute_loc.clone(), missing_param_msg.to_string()),
-                    (
+                env.diag_with_primary_and_labels(
+                    Severity::Error,
+                    &test_attribute_loc,
+                    "unable to generate test: missing parameter assignment",
+                    "expected a parameter to be assigned in this attribute",
+                    vec![(
                         var_loc.clone(),
-                        "Corresponding to this parameter".to_string(),
-                    ),
-                ]);
+                        "corresponding to this parameter".to_string(),
+                    )],
+                );
             },
         }
     }
@@ -474,7 +490,13 @@ fn parse_test_attribute(
                 if let Attribute::Assign { name, node_id, .. } = inner {
                     if !seen.insert(*name) {
                         let loc = env.get_node_loc(*node_id);
-                        env.error(&loc, "duplicate test parameter assignment");
+                        env.diag_with_primary_and_labels(
+                            Severity::Error,
+                            &loc,
+                            "duplicate test parameter assignment",
+                            "already assigned above",
+                            vec![],
+                        );
                         has_dup = true;
                     }
                 }

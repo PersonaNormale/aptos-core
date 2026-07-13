@@ -1,9 +1,7 @@
 
 Diagnostics:
-error: invalid parametric test row
-  ┌─ tests/unit_test/test/parametric_multiple_tests_same_bracket.move:5:9
+error: a test attribute group must contain exactly one `#[test]`
+  ┌─ tests/unit_test/test/parametric_multiple_tests_same_bracket.move:4:26
   │
 4 │     #[test(addr = @0x1), test(addr = @0x2)]
-  │                          ----------------- A test attribute group must contain exactly one #[test]
-5 │     fun multiple_tests_same_bracket(addr: signer) {
-  │         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  │                          ^^^^^^^^^^^^^^^^^ second `#[test]` in this group
