@@ -1,4 +1,4 @@
-// Every function parameter must be assigned in a row.
+// Every function parameter must be assigned in a case.
 address 0x1 {
 module M {
     #[test(a = @0x1)]

@@ -6,7 +6,7 @@ use move_unit_test::{test_reporter::UnitTestFactoryWithCostTable, UnitTestingCon
 use std::fs;
 use tempfile::tempdir;
 
-const TWO_ROW_SOURCE: &str = r#"
+const TWO_CASE_SOURCE: &str = r#"
     address 0x1 {
     module M {
         #[test(addr = @0x1)]
@@ -54,7 +54,7 @@ fn run_source(source: &str, filter: Option<&str>, report_statistics: bool) -> St
 }
 
 #[test]
-fn parametric_rows_separate_case_and_function_identity_in_source_order() {
+fn parametric_cases_separate_case_and_function_identity_in_source_order() {
     let source = r#"
         address 0x1 {
         module M {
@@ -73,7 +73,7 @@ fn parametric_rows_separate_case_and_function_identity_in_source_order() {
 
     assert_eq!(module.tests.len(), 3);
     for index in 0..3 {
-        let test_case = module.tests.get(&format!("ordered@row{index}")).unwrap();
+        let test_case = module.tests.get(&format!("ordered@case{index}")).unwrap();
         assert_eq!(test_case.function_name, "ordered");
         assert_eq!(test_case.arguments, vec![MoveValue::Signer(
             AccountAddress::from_hex_literal(&format!("0x{index:x}")).unwrap()
@@ -82,7 +82,7 @@ fn parametric_rows_separate_case_and_function_identity_in_source_order() {
 }
 
 #[test]
-fn single_row_keeps_unsuffixed_case_and_function_identity() {
+fn single_case_keeps_unsuffixed_case_and_function_identity() {
     let source = r#"
         address 0x1 {
         module M {
@@ -103,35 +103,35 @@ fn single_row_keeps_unsuffixed_case_and_function_identity() {
 }
 
 #[test]
-fn parametric_case_filter_selects_one_row() {
-    let output = run_source(TWO_ROW_SOURCE, Some("foo@row1"), false);
-    assert!(output.contains("::foo@row1"));
-    assert!(!output.contains("::foo@row0"));
+fn parametric_case_filter_selects_one_case() {
+    let output = run_source(TWO_CASE_SOURCE, Some("foo@case1"), false);
+    assert!(output.contains("::foo@case1"));
+    assert!(!output.contains("::foo@case0"));
     assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
 }
 
 #[test]
-fn plain_function_name_filter_selects_all_rows() {
-    let output = run_source(TWO_ROW_SOURCE, Some("foo"), false);
-    assert!(output.contains("::foo@row0"));
-    assert!(output.contains("::foo@row1"));
+fn plain_function_name_filter_selects_all_cases() {
+    let output = run_source(TWO_CASE_SOURCE, Some("foo"), false);
+    assert!(output.contains("::foo@case0"));
+    assert!(output.contains("::foo@case1"));
     assert!(output.contains("Total tests: 2; passed: 2; failed: 0"));
 }
 
 #[test]
-fn partial_row_suffix_filter_matches_nothing() {
-    let output = run_source(TWO_ROW_SOURCE, Some("foo@row"), false);
-    assert!(!output.contains("::foo@row0"));
-    assert!(!output.contains("::foo@row1"));
+fn partial_case_suffix_filter_matches_nothing() {
+    let output = run_source(TWO_CASE_SOURCE, Some("foo@case"), false);
+    assert!(!output.contains("::foo@case0"));
+    assert!(!output.contains("::foo@case1"));
     assert!(output.contains("Total tests: 0"));
 }
 
 #[test]
 fn parametric_statistics_use_case_identity() {
-    let output = run_source(TWO_ROW_SOURCE, None, true);
+    let output = run_source(TWO_CASE_SOURCE, None, true);
     let statistics = output.split("Test Statistics:").nth(1).unwrap();
 
-    assert!(statistics.contains("::foo@row0"));
-    assert!(statistics.contains("::foo@row1"));
-    assert_eq!(statistics.matches("::foo@row").count(), 2);
+    assert!(statistics.contains("::foo@case0"));
+    assert!(statistics.contains("::foo@case1"));
+    assert_eq!(statistics.matches("::foo@case").count(), 2);
 }

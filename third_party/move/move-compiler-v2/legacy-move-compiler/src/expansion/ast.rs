@@ -57,9 +57,9 @@ pub enum Attribute_ {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AttributeGroupId(u16);
+pub struct AttributeSiblingId(u16);
 
-impl AttributeGroupId {
+impl AttributeSiblingId {
     pub fn new(idx: u16) -> Self {
         Self(idx)
     }
@@ -72,15 +72,15 @@ impl AttributeGroupId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attribute {
     pub loc: Loc,
-    pub attribute_group_id: AttributeGroupId,
+    pub attribute_sibling_id: AttributeSiblingId,
     pub value: Attribute_,
 }
 
 impl Attribute {
-    pub fn new(loc: Loc, attribute_group_id: AttributeGroupId, value: Attribute_) -> Self {
+    pub fn new(loc: Loc, attribute_sibling_id: AttributeSiblingId, value: Attribute_) -> Self {
         Self {
             loc,
-            attribute_group_id,
+            attribute_sibling_id,
             value,
         }
     }
@@ -89,8 +89,8 @@ impl Attribute {
         self.value.attribute_name()
     }
 
-    pub fn attribute_group_id(&self) -> AttributeGroupId {
-        self.attribute_group_id
+    pub fn attribute_sibling_id(&self) -> AttributeSiblingId {
+        self.attribute_sibling_id
     }
 }
 
@@ -1162,7 +1162,7 @@ impl AstDebug for Attribute {
     fn ast_debug(&self, w: &mut AstWriter) {
         let Attribute {
             loc: _loc,
-            attribute_group_id: _attribute_group_id,
+            attribute_sibling_id: _attribute_sibling_id,
             value,
         } = self;
         value.ast_debug(w);

@@ -47,8 +47,8 @@ module parametric_testing::example {
 
     // ---------------------------------------------------------------------------
     // expected_failure attribute in test attribute.
-    // @row0 expects success.
-    // @row1 expects the abort.
+    // @case0 expects success.
+    // @case1 expects the abort.
     // ---------------------------------------------------------------------------
 
     #[test(addr = @0x1)]
@@ -80,11 +80,11 @@ module parametric_testing::example {
     }
 
     // ---------------------------------------------------------------------------
-    // Single test attribute (no @row suffix).
+    // Single test attribute (no @case suffix).
     // ---------------------------------------------------------------------------
 
     #[test(account = @0x1)]
-    fun single_row_signer(account: signer) {
+    fun single_case_signer(account: signer) {
         assert!(!blacklisted(owner_of(&account)));
     }
 
@@ -93,7 +93,7 @@ module parametric_testing::example {
     // ---------------------------------------------------------------------------
 
     #[test(addr = @0xBAD), expected_failure(abort_code = EBLACKLISTED)]
-    fun single_row_inline_failure(addr: address) {
+    fun single_case_inline_failure(addr: address) {
         assert!(!blacklisted(addr), EBLACKLISTED);
     }
 
@@ -103,7 +103,7 @@ module parametric_testing::example {
 
     #[test(addr = @0xBAD)]
     #[expected_failure(abort_code = EBLACKLISTED)]
-    fun single_row_legacy_failure(addr: address) {
+    fun single_case_legacy_failure(addr: address) {
         assert!(!blacklisted(addr), EBLACKLISTED);
     }
 
@@ -112,7 +112,7 @@ module parametric_testing::example {
     // ---------------------------------------------------------------------------
 
     #[test]
-    fun zero_arg_row() {
+    fun zero_arg_case() {
         assert!(!blacklisted(@0x1));
     }
 }

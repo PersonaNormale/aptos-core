@@ -1,4 +1,4 @@
-// A multi-row test rejects a parameterized top-level #[expected_failure].
+// A multi case test rejects a parameterized top-level #[expected_failure].
 address 0x1 {
 module M {
     #[test(addr = @0x1)]

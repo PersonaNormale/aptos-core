@@ -247,12 +247,12 @@ impl TestRunner {
                     .into_iter()
                     .filter(|(case_name, test_info)| {
                         let module_name = module_id.name().as_str();
-                        // Substring match on function name selects all rows of that function.
+                        // Substring match on function name selects all cases of that function.
                         let full_function = format!("{}::{}", module_name, test_info.function_name);
                         if full_function.contains(test_name_slice) {
                             return true;
                         }
-                        // Exact match on the case name selects one specific row.
+                        // Exact match on the case name selects that one case.
                         case_name.as_str() == test_name_slice
                             || format!("{}::{}", module_name, case_name.as_str()) == test_name_slice
                     })

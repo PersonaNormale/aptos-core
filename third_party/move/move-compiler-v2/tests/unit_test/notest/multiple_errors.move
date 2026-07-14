@@ -22,7 +22,7 @@ module M {
     #[test(_a=@0x1, _b=@0x2)]
     public fun c(_a: signer, _b: signer) { }
 
-    // failure: each parametric row omits one required argument
+    // failure: each parametric case omits one required argument
     #[test(_a=@0x1)]
     #[test(_b=@0x2)]
     public fun d(_a: signer, _b: signer) { }

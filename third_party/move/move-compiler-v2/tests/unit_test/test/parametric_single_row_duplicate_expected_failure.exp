@@ -1,7 +1,0 @@
-
-Diagnostics:
-error: a single-row test function may only have one `#[expected_failure]`
-  ┌─ tests/unit_test/test/parametric_single_row_duplicate_expected_failure.move:5:7
-  │
-5 │     #[expected_failure]
-  │       ^^^^^^^^^^^^^^^^ second occurrence here

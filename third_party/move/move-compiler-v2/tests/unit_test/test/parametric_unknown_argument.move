@@ -1,4 +1,4 @@
-// Every row assignment names a function parameter.
+// Every test attribute assignment names a function parameter.
 address 0x1 {
 module M {
     #[test(real = @0x1, typo = @0x2)]

@@ -1,7 +1,0 @@
-
-Diagnostics:
-error: a test attribute group must contain exactly one `#[test]`
-  ┌─ tests/unit_test/test/parametric_multiple_tests_same_bracket.move:4:26
-  │
-4 │     #[test(addr = @0x1), test(addr = @0x2)]
-  │                          ^^^^^^^^^^^^^^^^^ second `#[test]` in this group
