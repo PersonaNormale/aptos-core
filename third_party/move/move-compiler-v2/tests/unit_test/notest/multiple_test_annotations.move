@@ -1,4 +1,4 @@
-// Test-planner row validation is ignored when test code is disabled.
+// Test-planner case validation is ignored when test code is disabled.
 address 0x1 {
 module M {
     #[test(_a=@0x1)]

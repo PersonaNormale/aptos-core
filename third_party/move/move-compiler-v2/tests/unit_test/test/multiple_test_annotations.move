@@ -1,5 +1,5 @@
-// Multiple #[test] attributes are accepted as parametric rows.
-// Two parametric rows produce two TestCases named `<function>@rowN`.
+// Multiple #[test] attributes are accepted as parametric cases.
+// Two parametric cases produce two TestCases named `<function>@caseN`.
 address 0x1 {
 module M {
     #[test(_a=@0x1, _b=@0x2)]

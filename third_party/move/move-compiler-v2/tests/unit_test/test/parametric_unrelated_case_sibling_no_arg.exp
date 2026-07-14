@@ -1,0 +1,7 @@
+
+Diagnostics:
+error: a test attribute may only contain `#[test]` and `#[expected_failure]`
+  ┌─ tests/unit_test/test/parametric_unrelated_case_sibling_no_arg.move:4:13
+  │
+4 │     #[test, deprecated]
+  │             ^^^^^^^^^^ not allowed in a test attribute

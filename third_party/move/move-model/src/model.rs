@@ -292,9 +292,10 @@ pub struct SpecVarId(RawIndex);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct NodeId(usize);
 
-/// Identifier for an attribute group (one `#[...]` block), relative to an item's attribute list.
+/// Identifier shared by sibling attributes (from the same `#[...]` block), relative to an item's
+/// attribute list.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct AttributeGroupId(u16);
+pub struct AttributeSiblingId(u16);
 
 /// A global id. Instances of this type represent unique identifiers relative to `GlobalEnv`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -409,7 +410,7 @@ impl NodeId {
     }
 }
 
-impl AttributeGroupId {
+impl AttributeSiblingId {
     pub fn new(idx: u16) -> Self {
         Self(idx)
     }

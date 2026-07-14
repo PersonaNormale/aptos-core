@@ -1,18 +1,18 @@
-// Test-planner row semantics are ignored when test code is disabled.
+// Test-planner case semantics are ignored when test code is disabled.
 address 0x1 {
 module M {
     #[test(addr = @0x1), test(addr = @0x2)]
-    fun multiple_tests_in_one_bracket(addr: signer) {
+    fun multiple_tests_in_one_attribute(addr: signer) {
         let _ = addr;
     }
 
     #[test(addr = @0x1), deprecated]
-    fun unrelated_row_sibling(addr: signer) {
+    fun unrelated_case_sibling(addr: signer) {
         let _ = addr;
     }
 
     #[test(addr = @0x1), test_only]
-    fun test_only_row_sibling(addr: signer) {
+    fun test_only_case_sibling(addr: signer) {
         let _ = addr;
     }
 
@@ -22,13 +22,13 @@ module M {
     }
 
     #[test]
-    fun empty_parameterized_row(addr: signer) {
+    fun empty_parameterized_case(addr: signer) {
         let _ = addr;
     }
 
     #[test(addr = @0x1), expected_failure]
     #[expected_failure]
-    fun row_local_and_top_level_failure(addr: signer) {
+    fun case_local_and_top_level_failure(addr: signer) {
         let _ = addr;
     }
 
@@ -41,7 +41,7 @@ module M {
 
     #[test(addr = @0x1)]
     #[test(typo = @0x2)]
-    fun invalid_row_rejects_valid_sibling(addr: signer) {
+    fun invalid_case_rejects_valid_sibling(addr: signer) {
         let _ = addr;
     }
 }

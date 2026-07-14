@@ -1,4 +1,4 @@
-// Mixed parametric rows: one passes, one expects an arbitrary abort,
+// Mixed parametric cases: one passes, one expects an arbitrary abort,
 // one expects a specific abort_code with location.
 address 0x1 {
 module M {

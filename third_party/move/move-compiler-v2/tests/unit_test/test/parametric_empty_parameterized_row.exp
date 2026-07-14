@@ -1,9 +1,0 @@
-
-Diagnostics:
-error: unable to generate test: missing parameter assignment
-  ┌─ tests/unit_test/test/parametric_empty_parameterized_row.move:4:7
-  │
-4 │     #[test]
-  │       ^^^^ expected a parameter to be assigned in this attribute
-5 │     fun empty_parameterized_row(addr: signer) {
-  │                                 ---- corresponding to this parameter

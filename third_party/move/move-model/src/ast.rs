@@ -8,7 +8,7 @@
 use crate::{
     exp_rewriter::ExpRewriterFunctions,
     model::{
-        AttributeGroupId, EnvDisplay, FieldId, FunId, FunctionEnv, GlobalEnv, GlobalId, Loc,
+        AttributeSiblingId, EnvDisplay, FieldId, FunId, FunctionEnv, GlobalEnv, GlobalId, Loc,
         ModuleId, NodeId, Parameter, QualifiedId, QualifiedInstId, SchemaId, SpecFunId, StructId,
         TypeParameter, GHOST_MEMORY_PREFIX, SCRIPT_MODULE_NAME,
     },
@@ -167,13 +167,13 @@ pub enum AttributeValue {
 #[derive(Debug, Clone)]
 pub enum Attribute {
     Apply {
-        attribute_group_id: AttributeGroupId,
+        attribute_sibling_id: AttributeSiblingId,
         node_id: NodeId,
         name: Symbol,
         attrs: Vec<Attribute>,
     },
     Assign {
-        attribute_group_id: AttributeGroupId,
+        attribute_sibling_id: AttributeSiblingId,
         node_id: NodeId,
         name: Symbol,
         value: AttributeValue,
@@ -197,14 +197,16 @@ impl Attribute {
         }
     }
 
-    pub fn attribute_group_id(&self) -> AttributeGroupId {
+    pub fn attribute_sibling_id(&self) -> AttributeSiblingId {
         match self {
             Attribute::Assign {
-                attribute_group_id, ..
+                attribute_sibling_id,
+                ..
             }
             | Attribute::Apply {
-                attribute_group_id, ..
-            } => *attribute_group_id,
+                attribute_sibling_id,
+                ..
+            } => *attribute_sibling_id,
         }
     }
 }

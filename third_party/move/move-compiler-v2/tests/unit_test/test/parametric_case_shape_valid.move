@@ -1,5 +1,5 @@
-// Valid test attribute groups are order-insensitive, assignments are reordered to match
-// the function signature, and identical rows are accepted.
+// Valid test attributes are order-insensitive, assignments are reordered to match
+// the function signature, and identical cases are accepted.
 address 0x1 {
 module M {
     #[expected_failure, test(addr = @0x1)]
@@ -16,7 +16,7 @@ module M {
 
     #[test(addr = @0x1)]
     #[test(addr = @0x1)]
-    fun identical_rows_are_allowed(addr: signer) {
+    fun identical_cases_are_allowed(addr: signer) {
         let _ = addr;
     }
 }

@@ -585,12 +585,12 @@ fn flatten_attributes(
     attr_position: AttributePosition,
     attributes: Vec<P::Attributes>,
 ) -> E::Attributes {
-    let mut group_ids = AttributeGroupIdGenerator::new();
+    let mut sibling_ids = AttributeSiblingIdGenerator::new();
     let mut all_attrs = vec![];
     for attrs in attributes {
-        let attribute_group_id = group_ids.next();
+        let attribute_sibling_id = sibling_ids.next();
         for attr in attrs.value {
-            if let Some(attr) = attribute(context, attr_position, attribute_group_id, attr) {
+            if let Some(attr) = attribute(context, attr_position, attribute_sibling_id, attr) {
                 all_attrs.push(attr);
             }
         }
@@ -598,18 +598,21 @@ fn flatten_attributes(
     unique_attributes(context, attr_position, false, all_attrs, false)
 }
 
-struct AttributeGroupIdGenerator {
+struct AttributeSiblingIdGenerator {
     next: u16,
 }
 
-impl AttributeGroupIdGenerator {
+impl AttributeSiblingIdGenerator {
     fn new() -> Self {
         Self { next: 0 }
     }
 
-    fn next(&mut self) -> E::AttributeGroupId {
-        let id = E::AttributeGroupId::new(self.next);
-        self.next = self.next.checked_add(1).expect("AttributeGroupId overflow");
+    fn next(&mut self) -> E::AttributeSiblingId {
+        let id = E::AttributeSiblingId::new(self.next);
+        self.next = self
+            .next
+            .checked_add(1)
+            .expect("AttributeSiblingId overflow");
         id
     }
 }
@@ -728,21 +731,21 @@ fn skip_dedup(name_: &E::AttributeName_, is_test_context: bool) -> bool {
 fn attribute(
     context: &mut Context,
     attr_position: AttributePosition,
-    attribute_group_id: E::AttributeGroupId,
+    attribute_sibling_id: E::AttributeSiblingId,
     sp!(loc, attribute_): P::Attribute,
 ) -> Option<E::Attribute> {
     use E::Attribute_ as EA;
     use P::Attribute_ as PA;
     Some(E::Attribute::new(
         loc,
-        attribute_group_id,
+        attribute_sibling_id,
         match attribute_ {
             PA::Name(n) => EA::Name(n),
             PA::Assigned(n, v) => EA::Assigned(n, Box::new(attribute_value(context, *v)?)),
             PA::Parameterized(n, sp!(_, pattrs_)) => {
                 let attrs = pattrs_
                     .into_iter()
-                    .map(|a| attribute(context, attr_position, attribute_group_id, a))
+                    .map(|a| attribute(context, attr_position, attribute_sibling_id, a))
                     .collect::<Option<Vec<_>>>()?;
                 let is_test_context = n.value.as_str() == TestingAttribute::TEST;
                 EA::Parameterized(

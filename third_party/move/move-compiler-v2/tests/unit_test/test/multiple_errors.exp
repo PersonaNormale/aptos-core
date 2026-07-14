@@ -41,7 +41,7 @@ error: unable to generate test: missing parameter assignment
 37 │     public fun f(_a: signer, _b: signer) { }
    │                              -- corresponding to this parameter
 
-error: a single-row test function may only have one `#[expected_failure]`
+error: a single case test function may only have one `#[expected_failure]`
    ┌─ tests/unit_test/test/multiple_errors.move:42:7
    │
 42 │     #[expected_failure]
