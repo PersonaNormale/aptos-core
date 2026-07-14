@@ -1,4 +1,4 @@
-// Two #[expected_failure] attributes in the same test attribute are ambiguous.
+// Two #[expected_failure] attributes in the same test attribute warn; only the first is kept.
 address 0x1 {
 module M {
     #[test(addr = @0x1), expected_failure, expected_failure(abort_code = 5)]

@@ -1,4 +1,4 @@
-// An orphan #[expected_failure] on a multi case function is rejected.
+// An orphan #[expected_failure] on a multi case function warns and is dropped.
 address 0x1 {
 module M {
     #[test(addr = @0x1)]
