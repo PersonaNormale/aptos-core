@@ -187,13 +187,12 @@ fn validate_test_attributes(
         for sibling in &attribute.others {
             let loc = env.get_node_loc(sibling.node_id());
             env.diag_with_primary_and_labels(
-                Severity::Error,
+                Severity::Warning,
                 &loc,
                 "a test attribute may only contain `#[test]` and `#[expected_failure]`",
                 "not allowed in a test attribute",
                 vec![],
             );
-            has_error = true;
         }
     }
 
@@ -212,12 +211,12 @@ fn validate_test_attributes(
             has_error = true;
         }
     } else {
-        // Multi case: standalone (orphan) top-level EF is forbidden.
+        // Multi case: standalone (orphan) top-level EF is dropped with a warning.
         for failure in all_failure_attrs {
             if !attributes.contains_key(&failure.attribute_sibling_id()) {
                 let loc = env.get_node_loc(failure.node_id());
                 env.diag_with_primary_notes_and_labels(
-                    Severity::Error,
+                    Severity::Warning,
                     &loc,
                     "`#[expected_failure]` on a parametric multi case test must belong to one of its test attributes",
                     "not part of any test attribute",
@@ -227,21 +226,19 @@ fn validate_test_attributes(
                     ],
                     vec![],
                 );
-                has_error = true;
             }
         }
         // Per attribute: at most one #[expected_failure] per test attribute.
         for attribute in attributes.values() {
-            if attribute.failures.len() > 1 {
-                let loc = env.get_node_loc(attribute.failures[1].node_id());
+            for extra in attribute.failures.iter().skip(1) {
+                let loc = env.get_node_loc(extra.node_id());
                 env.diag_with_primary_and_labels(
-                    Severity::Error,
+                    Severity::Warning,
                     &loc,
                     "a test attribute may only have one `#[expected_failure]`",
-                    "second occurrence here",
+                    "extra occurrence here",
                     vec![],
                 );
-                has_error = true;
             }
         }
     }
@@ -304,13 +301,12 @@ fn build_test_info(
         if distinct.len() < case_count {
             let loc = env.get_node_loc(attributes.values().next().unwrap().tests[0].node_id());
             env.diag_with_primary_and_labels(
-                Severity::Error,
+                Severity::Warning,
                 &loc,
                 "redundant parametric cases on a zero-argument function",
                 "at least one case must carry a differentiating `#[expected_failure]`",
                 vec![],
             );
-            return Vec::new();
         }
     }
 
@@ -355,7 +351,6 @@ fn build_case_arguments(
         .collect();
 
     // Check for unknown assignments (names not in the function parameter list).
-    let mut has_unknown = false;
     if let Attribute::Apply {
         attrs: inner_attrs, ..
     } = test_attribute
@@ -365,19 +360,15 @@ fn build_case_arguments(
                 if !param_names.contains(name) {
                     let loc = env.get_node_loc(*node_id);
                     env.diag_with_primary_and_labels(
-                        Severity::Error,
+                        Severity::Warning,
                         &loc,
                         "unknown test parameter assignment",
                         &format!("no parameter named `{}`", env.symbol_pool().string(*name)),
                         vec![],
                     );
-                    has_unknown = true;
                 }
             }
         }
-    }
-    if has_unknown {
-        return Vec::new();
     }
 
     let mut arguments = Vec::new();
@@ -444,7 +435,8 @@ fn build_raw_test_cases<'a>(
         .iter()
         .enumerate()
         .map(|(index, (_, attribute))| {
-            // After validation: attribute.failures.len() is 0 or 1.
+            // Single case: attribute.failures.len() is 0 or 1 (guaranteed, else rejected above).
+            // Multi case: may exceed 1 (warned, not rejected); only the first survives.
             let expected_failure_attr = if let Some(ef) = attribute.failures.first() {
                 Some(*ef)
             } else if single_case {

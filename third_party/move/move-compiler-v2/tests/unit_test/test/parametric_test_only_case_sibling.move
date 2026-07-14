@@ -1,4 +1,4 @@
-// #[test_only] is not allowed inside a test attribute.
+// #[test_only] inside a test attribute warns and is dropped as an unrelated sibling.
 address 0x1 {
 module M {
     #[test(addr = @0x1), test_only]

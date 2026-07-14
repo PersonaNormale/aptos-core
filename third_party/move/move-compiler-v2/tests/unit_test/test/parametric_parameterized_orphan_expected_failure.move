@@ -1,4 +1,4 @@
-// A multi case test rejects a parameterized top-level #[expected_failure].
+// A multi case test warns on a parameterized top-level #[expected_failure] and drops it.
 address 0x1 {
 module M {
     #[test(addr = @0x1)]

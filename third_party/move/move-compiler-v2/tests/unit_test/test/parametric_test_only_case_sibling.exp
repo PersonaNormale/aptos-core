@@ -1,7 +1,10 @@
 
 Diagnostics:
-error: a test attribute may only contain `#[test]` and `#[expected_failure]`
+warning: a test attribute may only contain `#[test]` and `#[expected_failure]`
   ┌─ tests/unit_test/test/parametric_test_only_case_sibling.move:4:26
   │
 4 │     #[test(addr = @0x1), test_only]
   │                          ^^^^^^^^^ not allowed in a test attribute
+
+
+============ bytecode verification succeeded ========

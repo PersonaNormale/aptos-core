@@ -1,7 +1,10 @@
 
 Diagnostics:
-error: unknown test parameter assignment
+warning: unknown test parameter assignment
   ┌─ tests/unit_test/test/parametric_unknown_argument.move:4:25
   │
 4 │     #[test(real = @0x1, typo = @0x2)]
   │                         ^^^^^^^^^^^ no parameter named `typo`
+
+
+============ bytecode verification succeeded ========
