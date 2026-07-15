@@ -77,7 +77,7 @@ pub(super) fn resolve_expected_failure_kind<'a>(
         env.diag_with_notes(Severity::Error, &attr_loc, &msg, vec![note]);
         return Err(ErrorReported);
     }
-    Ok(matches.pop().unwrap())
+    Ok(matches.pop().expect("matches.len() == 1 checked above"))
 }
 
 /// Errors if `attr` carries any `(...)` parameters. Some failure kinds, such as `out_of_gas`,
@@ -261,7 +261,7 @@ fn constant_value_to_u64(
     };
     match ty {
         Type::Primitive(PrimitiveType::U64) if u <= BigInt::from(u64::MAX) => {
-            Ok(u.to_u64().unwrap())
+            Ok(u.to_u64().expect("u <= u64::MAX checked in guard"))
         },
         // The type checker already committed this constant to `u64`, so an out-of-range value
         // here means the checker's own invariant was violated, not a user error.
@@ -274,7 +274,7 @@ fn constant_value_to_u64(
             Err(ErrorReported)
         },
         Type::Primitive(PrimitiveType::Num) if u <= BigInt::from(u64::MAX) => {
-            Ok(u.to_u64().unwrap())
+            Ok(u.to_u64().expect("u <= u64::MAX checked in guard"))
         },
         Type::Primitive(PrimitiveType::Num) => {
             env.error(
@@ -298,7 +298,8 @@ fn resolve_module_id(env: &GlobalEnv, _vloc: Loc, module: Option<ModuleName>) ->
     let module_name = module?;
     let addr = module_name.addr();
     let sym = module_name.name();
-    let sym_core_id = Identifier::new(env.symbol_pool().string(sym).to_string()).unwrap();
+    let sym_core_id = Identifier::new(env.symbol_pool().string(sym).to_string())
+        .expect("symbol pool string is a valid identifier");
     let account_address = match addr {
         Address::Numerical(addr) => Some(*addr),
         Address::Symbolic(sym) => env.resolve_address_alias(*sym),
@@ -308,7 +309,9 @@ fn resolve_module_id(env: &GlobalEnv, _vloc: Loc, module: Option<ModuleName>) ->
 
 fn literal_value_to_u64(env: &GlobalEnv, loc: Loc, value: &Value) -> Checked<(Loc, u64)> {
     match value {
-        Value::Number(u) if u <= &BigInt::from(u64::MAX) => Ok((loc, u.to_u64().unwrap())),
+        Value::Number(u) if u <= &BigInt::from(u64::MAX) => {
+            Ok((loc, u.to_u64().expect("u <= u64::MAX checked in guard")))
+        },
         _ => {
             env.error(&loc, "expected a `u64` literal value");
             Err(ErrorReported)

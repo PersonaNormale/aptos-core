@@ -21,7 +21,10 @@ pub(super) fn build_test_info(
     let raw_cases = collect_and_validate_test_cases(env, current_module, &function);
 
     if raw_cases.len() == 1 {
-        let raw_case = raw_cases.into_iter().next().unwrap();
+        let raw_case = raw_cases
+            .into_iter()
+            .next()
+            .expect("raw_cases.len() == 1 checked above");
         let arguments = build_case_arguments(env, &raw_case, &function);
         let test_case = TestCase {
             function_name: fn_name_str.clone(),
