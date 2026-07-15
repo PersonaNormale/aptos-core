@@ -1,30 +1,30 @@
 
 Diagnostics:
-error: Expected `location` following `vector_error`
+error: expected `location` following `vector_error`
   ┌─ tests/unit_test/test/other_failures_invalid_location.move:6:24
   │
 6 │     #[expected_failure(vector_error)]
   │                        ^^^^^^^^^^^^
 
-error: Expected `location` following `arithmetic_error`
+error: expected `location` following `arithmetic_error`
    ┌─ tests/unit_test/test/other_failures_invalid_location.move:10:24
    │
 10 │     #[expected_failure(arithmetic_error)]
    │                        ^^^^^^^^^^^^^^^^
 
-error: Expected `location` following `out_of_gas`
+error: expected `location` following `out_of_gas`
    ┌─ tests/unit_test/test/other_failures_invalid_location.move:14:24
    │
 14 │     #[expected_failure(out_of_gas)]
    │                        ^^^^^^^^^^
 
-error: Expected `location` following `major_status`
+error: expected `location` following `major_status`
    ┌─ tests/unit_test/test/other_failures_invalid_location.move:18:24
    │
 18 │     #[expected_failure(major_status=4004)]
    │                        ^^^^^^^^^^^^^^^^^
 
-error: Expected `location` following `major_status`
+error: expected `location` following `major_status`
    ┌─ tests/unit_test/test/other_failures_invalid_location.move:22:24
    │
 22 │     #[expected_failure(major_status=4016, minor_code=0)]
@@ -36,7 +36,7 @@ error: invalid attribute value
 26 │     #[expected_failure(vector_error, location=x)]
    │                                      ^^^^^^^^^^
    │                                               │
-   │                                               Expected a module identifier, e.g. 'std::vector'
+   │                                               expected a module identifier, e.g. `std::vector`
 
 error: invalid attribute value
    ┌─ tests/unit_test/test/other_failures_invalid_location.move:30:36
@@ -44,7 +44,7 @@ error: invalid attribute value
 30 │     #[expected_failure(out_of_gas, location=0x1::m::t0)]
    │                                    ^^^^^^^^^^^^^^^^^^^
    │                                             │
-   │                                             Expected a module identifier, e.g. 'std::vector'
+   │                                             expected a module identifier, e.g. `std::vector`
 
 error: invalid attribute value
    ┌─ tests/unit_test/test/other_failures_invalid_location.move:38:43
@@ -52,7 +52,7 @@ error: invalid attribute value
 38 │     #[expected_failure(major_status=4004, location=self)]
    │                                           ^^^^^^^^^^^^^
    │                                                    │
-   │                                                    Expected a module identifier, e.g. 'std::vector'
+   │                                                    expected a module identifier, e.g. `std::vector`
 
 error: invalid attribute value
    ┌─ tests/unit_test/test/other_failures_invalid_location.move:42:59
@@ -60,4 +60,4 @@ error: invalid attribute value
 42 │     #[expected_failure(major_status=4016, minor_status=0, location=0)]
    │                                                           ^^^^^^^^^^
    │                                                                    │
-   │                                                                    Expected a module identifier, e.g. 'std::vector'
+   │                                                                    expected a module identifier, e.g. `std::vector`
