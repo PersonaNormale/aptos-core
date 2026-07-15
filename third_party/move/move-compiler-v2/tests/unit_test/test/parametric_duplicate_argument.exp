@@ -1,7 +1,10 @@
 
 Diagnostics:
-error: duplicate test parameter assignment
+warning: a test parameter may only be assigned once
   ┌─ tests/unit_test/test/parametric_duplicate_argument.move:4:25
   │
 4 │     #[test(addr = @0x1, addr = @0x2)]
-  │                         ^^^^^^^^^^^ already assigned above
+  │                         ^^^^^^^^^^^ extra occurrence here
+
+
+============ bytecode verification succeeded ========
