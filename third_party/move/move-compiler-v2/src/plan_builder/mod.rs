@@ -18,8 +18,8 @@ mod convert;
 mod error;
 mod failure;
 
-use build::build_test_info;
 use crate::options::Options;
+use build::build_test_info;
 use legacy_move_compiler::unit_test::ModuleTestPlan;
 use move_command_line_common::{address::NumericalAddress, parser::NumberFormat};
 use move_core_types::{account_address::AccountAddress, identifier::Identifier};

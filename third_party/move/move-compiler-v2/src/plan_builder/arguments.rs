@@ -34,10 +34,8 @@ pub(super) fn build_case_arguments(
     };
 
     let parameters = function.get_parameters_ref();
-    let param_names: BTreeSet<Symbol> = parameters
-        .iter()
-        .map(|Parameter(var, _, _)| *var)
-        .collect();
+    let param_names: BTreeSet<Symbol> =
+        parameters.iter().map(|Parameter(var, _, _)| *var).collect();
 
     // Check for unknown assignments (names not in the function parameter list).
     if let Attribute::Apply {

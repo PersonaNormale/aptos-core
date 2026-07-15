@@ -61,7 +61,15 @@ pub(super) fn parse_failure_attribute(
             let (kind, attr) = resolve_expected_failure_kind(env, outer_loc, &mut attrs)?;
             let location_opt = attrs.remove(TestingAttribute::ERROR_LOCATION);
             let attr_loc = env.get_node_loc(attr.node_id());
-            resolve_failure_kind(env, current_module, kind, attr, attr_loc, location_opt, attrs)
+            resolve_failure_kind(
+                env,
+                current_module,
+                kind,
+                attr,
+                attr_loc,
+                location_opt,
+                attrs,
+            )
         },
     }
 }
@@ -145,7 +153,10 @@ fn resolve_failure_kind(
             let major_status = StatusCode::try_from(major_status_u64).map_err(|_| {
                 env.error_with_labels(
                     &value_name_loc,
-                    &format!("invalid value for `{}`", TestingAttribute::MAJOR_STATUS_NAME),
+                    &format!(
+                        "invalid value for `{}`",
+                        TestingAttribute::MAJOR_STATUS_NAME
+                    ),
                     vec![(
                         major_value_loc,
                         format!(
