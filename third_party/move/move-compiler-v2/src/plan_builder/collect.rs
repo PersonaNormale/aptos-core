@@ -8,7 +8,9 @@
 
 use super::failure::parse_failure_attribute;
 use codespan_reporting::diagnostic::Severity;
-use legacy_move_compiler::{shared::known_attributes::TestingAttribute, unit_test::ExpectedFailure};
+use legacy_move_compiler::{
+    shared::known_attributes::TestingAttribute, unit_test::ExpectedFailure,
+};
 use move_model::{
     ast::{Attribute, ModuleName},
     model::{AttributeSiblingId, FunctionEnv, GlobalEnv},
@@ -50,7 +52,10 @@ struct ClassifiedAttributes<'a> {
     test_only: Option<&'a Attribute>,
 }
 
-fn collect_test_attributes<'a>(env: &GlobalEnv, attrs: &'a [Attribute]) -> ClassifiedAttributes<'a> {
+fn collect_test_attributes<'a>(
+    env: &GlobalEnv,
+    attrs: &'a [Attribute],
+) -> ClassifiedAttributes<'a> {
     let test_name = env.symbol_pool().make(TestingAttribute::TEST);
     let ef_name = env.symbol_pool().make(TestingAttribute::EXPECTED_FAILURE);
     let test_only_name = env.symbol_pool().make(TestingAttribute::TEST_ONLY);
@@ -282,8 +287,10 @@ fn check_zero_arg_distinctness(env: &GlobalEnv, function: &FunctionEnv, raw_case
     if raw_cases.len() <= 1 || !function.get_parameters_ref().is_empty() {
         return;
     }
-    let distinct: BTreeSet<&Option<ExpectedFailure>> =
-        raw_cases.iter().map(|case| &case.expected_failure).collect();
+    let distinct: BTreeSet<&Option<ExpectedFailure>> = raw_cases
+        .iter()
+        .map(|case| &case.expected_failure)
+        .collect();
     if distinct.len() < raw_cases.len() {
         let Some(first) = raw_cases.first() else {
             return;

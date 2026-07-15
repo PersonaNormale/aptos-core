@@ -70,7 +70,9 @@ pub(super) fn resolve_expected_failure_kind<'a>(
         );
         let note = format!(
             "expected one of: {}",
-            TestingAttribute::expected_failure_cases().to_vec().join(", ")
+            TestingAttribute::expected_failure_cases()
+                .to_vec()
+                .join(", ")
         );
         env.diag_with_notes(Severity::Error, &attr_loc, &msg, vec![note]);
         return Err(ErrorReported);

@@ -806,43 +806,40 @@ fn attribute_value(
 ) -> Option<E::AttributeValue> {
     use E::AttributeValue_ as EV;
     use P::{AttributeValue_ as PV, LeadingNameAccess_ as LN, NameAccessChain_ as PN};
-    Some(sp(
-        loc,
-        match avalue_ {
-            PV::Value(v) => EV::Value(value(context, v)?),
-            PV::ModuleAccess(sp!(ident_loc, PN::Two(sp!(aloc, LN::AnonymousAddress(a)), n))) => {
-                let addr = Address::Numerical(None, sp(aloc, a));
-                let mident = sp(ident_loc, ModuleIdent_::new(addr, ModuleName(n)));
-                check_module_name(context, &ident_loc, &mident);
-                EV::Module(mident)
-            },
-            // bit wonky, but this is the only spot currently where modules and expressions exist
-            // in the same namespace.
-            // TODO consider if we want to just force all of these checks into the well-known
-            // attribute setup
-            PV::ModuleAccess(sp!(ident_loc, PN::One(n)))
-                if context.aliases.module_alias_get(&n).is_some() =>
-            {
-                let sp!(_, mident_) = context.aliases.module_alias_get(&n).unwrap();
-                let mident = sp(ident_loc, mident_);
-                check_module_name(context, &ident_loc, &mident);
-                EV::Module(mident)
-            },
-            PV::ModuleAccess(ma) => {
-                let value = match ma {
-                    sp!(ident_loc, PN::Two(sp!(aloc, LN::Name(n1)), n2)) => {
-                        // Check to see if `n1::n2` can be resolved to be module access.
-                        can_be_resolved_as_module(context, ident_loc, aloc, n1, n2)
-                    },
-                    _ => None,
-                };
-                match value {
-                    Some(mident) => EV::Module(mident),
-                    None => EV::ModuleAccess(name_access_chain(context, Access::Type, ma)?),
-                }
-            },
+    Some(sp(loc, match avalue_ {
+        PV::Value(v) => EV::Value(value(context, v)?),
+        PV::ModuleAccess(sp!(ident_loc, PN::Two(sp!(aloc, LN::AnonymousAddress(a)), n))) => {
+            let addr = Address::Numerical(None, sp(aloc, a));
+            let mident = sp(ident_loc, ModuleIdent_::new(addr, ModuleName(n)));
+            check_module_name(context, &ident_loc, &mident);
+            EV::Module(mident)
         },
-    ))
+        // bit wonky, but this is the only spot currently where modules and expressions exist
+        // in the same namespace.
+        // TODO consider if we want to just force all of these checks into the well-known
+        // attribute setup
+        PV::ModuleAccess(sp!(ident_loc, PN::One(n)))
+            if context.aliases.module_alias_get(&n).is_some() =>
+        {
+            let sp!(_, mident_) = context.aliases.module_alias_get(&n).unwrap();
+            let mident = sp(ident_loc, mident_);
+            check_module_name(context, &ident_loc, &mident);
+            EV::Module(mident)
+        },
+        PV::ModuleAccess(ma) => {
+            let value = match ma {
+                sp!(ident_loc, PN::Two(sp!(aloc, LN::Name(n1)), n2)) => {
+                    // Check to see if `n1::n2` can be resolved to be module access.
+                    can_be_resolved_as_module(context, ident_loc, aloc, n1, n2)
+                },
+                _ => None,
+            };
+            match value {
+                Some(mident) => EV::Module(mident),
+                None => EV::ModuleAccess(name_access_chain(context, Access::Type, ma)?),
+            }
+        },
+    }))
 }
 
 //**************************************************************************************************
@@ -939,14 +936,11 @@ fn module_members(
                 record_module_member_info(&mut cur_members, &s.name.0, ModuleMemberKind::Struct);
             },
             P::ModuleMember::Spec(
-                sp!(
-                    _,
-                    SB {
-                        target,
-                        members,
-                        ..
-                    }
-                ),
+                sp!(_, SB {
+                    target,
+                    members,
+                    ..
+                }),
             ) => match &target.value {
                 SBT::Schema(n, _) => {
                     record_module_member_info(&mut cur_members, n, ModuleMemberKind::Schema);
@@ -1020,14 +1014,11 @@ fn aliases_from_member(
             Some(P::ModuleMember::Struct(s))
         },
         P::ModuleMember::Spec(s) => {
-            let sp!(
-                _,
-                SB {
-                    target,
-                    members,
-                    ..
-                }
-            ) = &s;
+            let sp!(_, SB {
+                target,
+                members,
+                ..
+            }) = &s;
             match &target.value {
                 SBT::Schema(n, _) => {
                     check_name_and_add_implicit_alias!(ModuleMemberKind::Schema, *n);
@@ -1475,17 +1466,14 @@ fn access_specifier(context: &mut Context, specifier: P::AccessSpecifier) -> E::
         access_specifier_name_access_chain(context, chain);
     let type_args = optional_types(context, type_args);
     let address = address_specifier(context, address);
-    sp(
-        specifier.loc,
-        E::AccessSpecifier_ {
-            kind,
-            module_address,
-            module_name,
-            resource_name,
-            type_args,
-            address,
-        },
-    )
+    sp(specifier.loc, E::AccessSpecifier_ {
+        kind,
+        module_address,
+        module_name,
+        resource_name,
+        type_args,
+        address,
+    })
 }
 
 fn access_specifier_name_access_chain(
@@ -1689,14 +1677,11 @@ fn spec(context: &mut Context, sp!(loc, pspec): P::SpecBlock) -> E::SpecBlock {
     context.set_to_outer_scope(old_aliases);
     context.in_spec_context = false;
 
-    sp(
-        loc,
-        E::SpecBlock_ {
-            attributes,
-            target: spec_target(context, target),
-            members,
-        },
-    )
+    sp(loc, E::SpecBlock_ {
+        attributes,
+        target: spec_target(context, target),
+        members,
+    })
 }
 
 fn spec_target(context: &mut Context, sp!(loc, pt): P::SpecBlockTarget) -> E::SpecBlockTarget {
@@ -2547,14 +2532,11 @@ fn exp_(context: &mut Context, sp!(loc, pe_): P::Exp) -> E::Exp {
                             let lhs_loc = el.loc;
                             let (tmp2, bind2) = let_symbol_eq_exp(er.loc, Symbol::from("$t2"), *er);
                             // t1, let t1 = e1;
-                            let (tmp1, bind1) = let_symbol_eq_exp(
-                                el.loc,
-                                Symbol::from("$t1"),
-                                match &el.value {
+                            let (tmp1, bind1) =
+                                let_symbol_eq_exp(el.loc, Symbol::from("$t1"), match &el.value {
                                     EE::Index(..) => sp(el.loc, EE::Borrow(true, el)),
                                     _ => *el,
-                                },
-                            );
+                                });
                             // *t1
                             let deref_tmp1 = sp(lhs_loc, EE::Dereference(Box::new(tmp1.clone())));
                             // *t1 + t2
