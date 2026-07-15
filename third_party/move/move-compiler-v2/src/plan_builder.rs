@@ -477,32 +477,32 @@ fn parse_test_attribute(
                 *TestingAttribute::TEST == env.symbol_pool().string(*sym).to_string(),
                 "ICE: We should only be parsing a raw test attribute"
             );
-            // Detect duplicate parameter assignment names before collecting.
+            // A repeated parameter assignment warns; the first assignment is retained
+            // and subsequent ones for the same name are ignored.
             let mut seen: BTreeSet<Symbol> = BTreeSet::new();
-            let mut has_dup = false;
             for inner in vec {
                 if let Attribute::Assign { name, node_id, .. } = inner {
                     if !seen.insert(*name) {
                         let loc = env.get_node_loc(*node_id);
                         env.diag_with_primary_and_labels(
-                            Severity::Error,
+                            Severity::Warning,
                             &loc,
-                            "duplicate test parameter assignment",
-                            "already assigned above",
+                            "a test parameter may only be assigned once",
+                            "extra occurrence here",
                             vec![],
                         );
-                        has_dup = true;
                     }
                 }
-            }
-            if has_dup {
-                return None;
             }
             let mut combined = BTreeMap::new();
             for attr in vec {
                 match parse_test_attribute(env, attr, depth + 1) {
                     None => return None,
-                    Some(partial) => combined.extend(partial),
+                    Some(partial) => {
+                        for (name, value) in partial {
+                            combined.entry(name).or_insert(value);
+                        }
+                    },
                 }
             }
             Some(combined)
