@@ -155,7 +155,11 @@ fn validate_test_attributes(
     if let Some(attr) = test_only_attr {
         if !attributes.contains_key(&attr.attribute_sibling_id()) {
             let test_only_loc = env.get_node_loc(attr.node_id());
-            let first_test_attr = attributes.values().next().unwrap().tests[0];
+            let first_test_attr = attributes
+                .values()
+                .next()
+                .expect("test_groups is non-empty; caller returns early otherwise")
+                .tests[0];
             let test_attribute_loc = env.get_node_loc(first_test_attr.node_id());
             env.diag_with_primary_and_labels(
                 Severity::Error,
