@@ -8,15 +8,15 @@
 
 use super::{
     collect::RawTestCase,
-    convert::ToMoveValue,
+    convert::{to_move_value, ConversionError},
     error::{Checked, ErrorReported},
 };
 use codespan_reporting::diagnostic::Severity;
 use legacy_move_compiler::shared::known_attributes::TestingAttribute;
 use move_core_types::value::MoveValue;
 use move_model::{
-    ast::Attribute,
-    model::{FunctionEnv, GlobalEnv, Parameter},
+    ast::{Attribute, AttributeValue, Value},
+    model::{FunctionEnv, GlobalEnv, Loc, NodeId, Parameter},
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
@@ -110,7 +110,7 @@ fn parse_test_attribute(
     env: &GlobalEnv,
     test_attribute: &Attribute,
     depth: usize,
-) -> Checked<BTreeMap<Symbol, MoveValue>> {
+) -> Checked<BTreeMap<Symbol, (NodeId, Value)>> {
     match test_attribute {
         Attribute::Apply { node_id, .. } if depth > 0 => {
             let loc = env.get_node_loc(*node_id);
@@ -161,16 +161,19 @@ fn parse_test_attribute(
                 env.error(&loc, "unexpected nested attribute in test declaration");
                 return Err(ErrorReported);
             }
-            let move_value = value.to_move_value(env).map_err(|ErrorReported| {
-                let loc = env.get_node_loc(*node_id);
-                env.error_with_labels(&loc, "unsupported attribute value", vec![(
-                    loc.clone(),
-                    "assigned in this attribute".to_string(),
-                )]);
-                ErrorReported
-            })?;
+            let (value_node_id, val) = match value {
+                AttributeValue::Value(value_node_id, val) => (*value_node_id, val.clone()),
+                AttributeValue::Name(..) => {
+                    let loc = env.get_node_loc(*node_id);
+                    env.error_with_labels(&loc, "unsupported attribute value", vec![(
+                        loc.clone(),
+                        "assigned in this attribute".to_string(),
+                    )]);
+                    return Err(ErrorReported);
+                },
+            };
             let mut args = BTreeMap::new();
-            args.insert(*name, move_value);
+            args.insert(*name, (value_node_id, val));
             Ok(args)
         },
     }
