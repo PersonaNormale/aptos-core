@@ -9,10 +9,13 @@
 use super::error::{Checked, ErrorReported};
 use codespan_reporting::diagnostic::Severity;
 use legacy_move_compiler::shared::known_attributes::TestingAttribute;
-use move_core_types::{identifier::Identifier, language_storage::ModuleId, value::MoveValue};
+use move_core_types::{
+    account_address::AccountAddress, identifier::Identifier, language_storage::ModuleId,
+    value::MoveValue,
+};
 use move_model::{
     ast::{Address, Attribute, AttributeValue, ModuleName, Value},
-    model::{GlobalEnv, Loc},
+    model::{GlobalEnv, Loc, NodeId},
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
@@ -342,25 +345,98 @@ pub(super) fn require_location_attr<T>(
     }
 }
 
-/// Converts an attribute payload into the `MoveValue` it denotes.
-///
-/// Not `std::convert::TryFrom`: resolving a symbolic address alias needs `env`, and
-/// `TryFrom`'s signature has no room for it. Returns `Err` without emitting a diagnostic; the
-/// caller owns the surrounding assignment's location and reports the failure itself.
-pub(super) trait ToMoveValue {
-    fn to_move_value(&self, env: &GlobalEnv) -> Checked<MoveValue>;
+/// Why `to_move_value` could not produce a `MoveValue` for a given parameter type. Carries
+/// enough detail for the caller to phrase a specific diagnostic; `to_move_value` and its
+/// helpers never emit diagnostics themselves, since only the caller knows the parameter's own
+/// location to label.
+pub(super) enum ConversionError {
+    NotANumber,
+    NotAnAddress,
+    TypeMismatch { declared: PrimitiveType },
+    OutOfRange { min: BigInt, max: BigInt },
+    UnsupportedParameterType,
 }
 
-impl ToMoveValue for AttributeValue {
-    fn to_move_value(&self, env: &GlobalEnv) -> Checked<MoveValue> {
-        match self {
-            AttributeValue::Value(_id, Value::Address(addr)) => match addr {
-                Address::Numerical(num) => Some(*num),
-                Address::Symbolic(sym) => env.resolve_address_alias(*sym),
-            }
-            .map(MoveValue::Address)
-            .ok_or(ErrorReported),
-            _ => Err(ErrorReported),
+/// Converts a `#[test(...)]` attribute value into the `MoveValue` a parameter of type `target`
+/// expects.
+///
+/// Not `std::convert::TryFrom`: resolving a symbolic address alias needs `env`, and `TryFrom`'s
+/// signature has no room for it. `node_id` is the attribute value's own node id, used to read
+/// back an explicit literal suffix (`5u8`) through `env.get_node_type`; an unsuffixed literal
+/// (`5`) never finalizes to a concrete type at this node, so that check is skipped for it.
+/// Emits no diagnostic; the caller owns the parameter's location and reports the failure
+/// itself.
+pub(super) fn to_move_value(
+    value: &Value,
+    node_id: NodeId,
+    target: PrimitiveType,
+    env: &GlobalEnv,
+) -> Result<MoveValue, ConversionError> {
+    match target {
+        PrimitiveType::Address => expect_address(value, env).map(MoveValue::Address),
+        PrimitiveType::Signer => expect_address(value, env).map(MoveValue::Signer),
+        PrimitiveType::U8 => expect_bounded_number(value, node_id, PrimitiveType::U8, env)
+            .map(|n| MoveValue::U8(n.to_u8().expect("bounds already checked"))),
+        PrimitiveType::U16 => expect_bounded_number(value, node_id, PrimitiveType::U16, env)
+            .map(|n| MoveValue::U16(n.to_u16().expect("bounds already checked"))),
+        PrimitiveType::U32 => expect_bounded_number(value, node_id, PrimitiveType::U32, env)
+            .map(|n| MoveValue::U32(n.to_u32().expect("bounds already checked"))),
+        PrimitiveType::U64 => expect_bounded_number(value, node_id, PrimitiveType::U64, env)
+            .map(|n| MoveValue::U64(n.to_u64().expect("bounds already checked"))),
+        PrimitiveType::U128 => expect_bounded_number(value, node_id, PrimitiveType::U128, env)
+            .map(|n| MoveValue::U128(n.to_u128().expect("bounds already checked"))),
+        PrimitiveType::Bool
+        | PrimitiveType::U256
+        | PrimitiveType::I8
+        | PrimitiveType::I16
+        | PrimitiveType::I32
+        | PrimitiveType::I64
+        | PrimitiveType::I128
+        | PrimitiveType::I256
+        | PrimitiveType::Num
+        | PrimitiveType::Range
+        | PrimitiveType::EventStore => Err(ConversionError::UnsupportedParameterType),
+    }
+}
+
+/// Resolves a `Value::Address`, following a symbolic alias if needed. Used for both `address`
+/// and `signer` parameters, which differ only in which `MoveValue` variant wraps the address.
+fn expect_address(value: &Value, env: &GlobalEnv) -> Result<AccountAddress, ConversionError> {
+    let Value::Address(addr) = value else {
+        return Err(ConversionError::NotAnAddress);
+    };
+    match addr {
+        Address::Numerical(addr) => Ok(*addr),
+        Address::Symbolic(sym) => env
+            .resolve_address_alias(*sym)
+            .ok_or(ConversionError::NotAnAddress),
+    }
+}
+
+/// Resolves a `Value::Number`, checking it against `target`'s bounds. If the literal carried an
+/// explicit suffix (`env.get_node_type(node_id)` is a concrete `Type::Primitive`), that suffix
+/// must agree with `target` first. An unsuffixed literal's node type is an unresolved
+/// `Type::Var`, since the throwaway `ExpTranslator` that typed it never runs the finalization
+/// pass that would default it to `u64` — that case skips the suffix check entirely, the same
+/// way an unsuffixed literal in an ordinary function call is free to take on its target type.
+fn expect_bounded_number(
+    value: &Value,
+    node_id: NodeId,
+    target: PrimitiveType,
+    env: &GlobalEnv,
+) -> Result<BigInt, ConversionError> {
+    let Value::Number(n) = value else {
+        return Err(ConversionError::NotANumber);
+    };
+    if let Type::Primitive(declared) = env.get_node_type(node_id) {
+        if declared != target {
+            return Err(ConversionError::TypeMismatch { declared });
         }
     }
+    let min = target.get_min_value().expect("numeric target has a min");
+    let max = target.get_max_value().expect("numeric target has a max");
+    if n < &min || n > &max {
+        return Err(ConversionError::OutOfRange { min, max });
+    }
+    Ok(n.clone())
 }
