@@ -439,9 +439,10 @@ impl ModuleBuilder<'_, '_> {
                     .new_node(self.parent.to_loc(&v.loc), Type::Tuple(vec![]));
                 let v = match &v.value {
                     EA::AttributeValue_::Value(val) => {
-                        let val = if let Some((val, _)) = ExpTranslator::new(self)
+                        let val = if let Some((val, ty)) = ExpTranslator::new(self)
                             .translate_value_free(val, &ErrorMessageContext::General)
                         {
+                            self.parent.env.update_node_type(value_node_id, ty);
                             val
                         } else {
                             // Error reported
