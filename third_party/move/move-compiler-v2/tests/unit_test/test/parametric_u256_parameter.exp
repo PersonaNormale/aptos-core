@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: unsupported parameter type
+  ┌─ tests/unit_test/test/parametric_u256_parameter.move:5:7
+  │
+5 │     #[test(x = 5u256)]
+  │       ^^^^^^^^^^^^^^^ test attribute assignments only support `signer`, `address`, and unsigned integer parameters
+6 │     fun u256_param(x: u256) {
+  │                    - corresponding to this parameter
