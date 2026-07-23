@@ -68,19 +68,12 @@ pub(super) fn build_case_arguments(
                     Ok(move_value) => arguments.push(move_value),
                     Err(err) => report_conversion_error(env, &test_attribute_loc, var_loc, err),
                 },
-                None => {
-                    env.diag_with_primary_and_labels(
-                        Severity::Error,
-                        &test_attribute_loc,
-                        "unable to generate test: unsupported parameter type",
-                        "test attribute assignments only support `signer`, `address`, and \
-                         unsigned integer parameters",
-                        vec![(
-                            var_loc.clone(),
-                            "corresponding to this parameter".to_string(),
-                        )],
-                    );
-                },
+                None => report_conversion_error(
+                    env,
+                    &test_attribute_loc,
+                    var_loc,
+                    ConversionError::UnsupportedParameterType,
+                ),
             },
             None => {
                 env.diag_with_primary_and_labels(
@@ -101,12 +94,11 @@ pub(super) fn build_case_arguments(
 
 /// The `PrimitiveType` a `#[test(...)]` assignment must be checked against for this declared
 /// parameter type, or `None` if `ty` is not a supported parameter shape (a struct, vector, or
-/// other non-primitive type - unsupported both before and after this layer).
+/// other non-primitive type, unsupported both before and after this layer).
 ///
 /// `&signer` is the only reference shape accepted, matching the one special case Move's own
 /// test harness constructs by reference. No other primitive is accepted by reference: `ty`
-/// being e.g. `&u8` is not a supported parameter shape either, both before and after this
-/// layer.
+/// being e.g. `&u8` is not a supported parameter shape either.
 fn primitive_param_type(ty: &Type) -> Option<PrimitiveType> {
     match ty {
         Type::Primitive(p) => Some(*p),
