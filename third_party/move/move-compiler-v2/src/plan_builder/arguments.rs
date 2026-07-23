@@ -156,16 +156,10 @@ fn report_conversion_error(
                 .to_string(),
         ),
     };
-    env.diag_with_primary_and_labels(
-        Severity::Error,
-        test_attribute_loc,
-        msg,
-        &note,
-        vec![(
-            var_loc.clone(),
-            "corresponding to this parameter".to_string(),
-        )],
-    );
+    env.diag_with_primary_and_labels(Severity::Error, test_attribute_loc, msg, &note, vec![(
+        var_loc.clone(),
+        "corresponding to this parameter".to_string(),
+    )]);
 }
 
 /// Recursively flattens a `#[test(...)]` attribute tree into a `param name -> value` map.
