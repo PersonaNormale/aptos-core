@@ -417,14 +417,14 @@ fn expect_address(value: &Value, env: &GlobalEnv) -> Result<AccountAddress, Conv
 /// explicit suffix (`env.get_node_type(node_id)` is a concrete `Type::Primitive`), that suffix
 /// must agree with `target` first. An unsuffixed literal's node type is an unresolved
 /// `Type::Var`, since the throwaway `ExpTranslator` that typed it never runs the finalization
-/// pass that would default it to `u64` — that case skips the suffix check entirely, the same
+/// pass that would default it to `u64`; that case skips the suffix check entirely, the same
 /// way an unsuffixed literal in an ordinary function call is free to take on its target type.
-fn expect_bounded_number(
-    value: &Value,
+fn expect_bounded_number<'a>(
+    value: &'a Value,
     node_id: NodeId,
     target: PrimitiveType,
     env: &GlobalEnv,
-) -> Result<BigInt, ConversionError> {
+) -> Result<&'a BigInt, ConversionError> {
     let Value::Number(n) = value else {
         return Err(ConversionError::NotANumber);
     };
@@ -438,5 +438,5 @@ fn expect_bounded_number(
     if n < &min || n > &max {
         return Err(ConversionError::OutOfRange { min, max });
     }
-    Ok(n.clone())
+    Ok(n)
 }
