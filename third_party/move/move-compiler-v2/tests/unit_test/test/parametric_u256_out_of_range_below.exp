@@ -1,9 +1,9 @@
 
 Diagnostics:
 error: unable to generate test: literal out of range
-  ┌─ tests/unit_test/test/parametric_u256_out_of_range_below.move:4:7
+  ┌─ tests/unit_test/test/parametric_u256_out_of_range_below.move:5:7
   │
-4 │     #[test(x = -1)]
+5 │     #[test(x = -1)]
   │       ^^^^^^^^^^^^ value must be between `0` and `115792089237316195423570985008687907853269984665640564039457584007913129639935` for this parameter
-5 │     fun out_of_range(x: u256) {
-  │                     - corresponding to this parameter
+6 │     fun out_of_range(x: u256) {
+  │                      - corresponding to this parameter
