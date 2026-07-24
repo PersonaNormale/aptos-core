@@ -314,3 +314,40 @@ fn i128_unsuffixed_suffixed_and_boundary_values_are_supported() {
         vec![MoveValue::I128(-170141183460469231731687303715884105728)]
     );
 }
+
+#[test]
+fn i256_unsuffixed_suffixed_and_boundary_values_are_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(x = -5)]
+            #[test(x = 5i256)]
+            #[test(x = 57896044618658097711785492504343953926634992332820282019728792003956564819967i256)]
+            #[test(x = -57896044618658097711785492504343953926634992332820282019728792003956564819968i256)]
+            fun i256_accepted(x: i256) {
+                let _ = x;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(
+        module.tests.get("i256_accepted@case0").unwrap().arguments,
+        vec![MoveValue::I256(I256::from(-5i64))]
+    );
+    assert_eq!(
+        module.tests.get("i256_accepted@case1").unwrap().arguments,
+        vec![MoveValue::I256(I256::from(5i64))]
+    );
+    assert_eq!(
+        module.tests.get("i256_accepted@case2").unwrap().arguments,
+        vec![MoveValue::I256(I256::MAX)]
+    );
+    assert_eq!(
+        module.tests.get("i256_accepted@case3").unwrap().arguments,
+        vec![MoveValue::I256(I256::MIN)]
+    );
+}
