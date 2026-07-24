@@ -172,4 +172,79 @@ module parametric_testing::example {
         assert!(!blacklisted(owner_of(&account)));
         assert!(threshold > 0);
     }
+
+    // ---------------------------------------------------------------------------
+    // Signed integer parameters.
+    // A leading `-` is recognized in attribute position, so an unsuffixed
+    // negative literal binds freely to whichever signed width the parameter
+    // declares, same as an unsuffixed positive literal already did.
+    // ---------------------------------------------------------------------------
+
+    #[test(x = -5)]
+    #[test(x = 5)]
+    fun unsuffixed_signed_literal_binds_to_declared_width(x: i8) {
+        assert!(x == -5 || x == 5);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Every signed width from i8 up to i128 is accepted, at its own boundary.
+    // ---------------------------------------------------------------------------
+
+    #[test(x = -128i8)]
+    fun i8_param_at_min_value(x: i8) {
+        assert!(x == -128);
+    }
+
+    #[test(x = 32767i16)]
+    fun i16_param_at_max_value(x: i16) {
+        assert!(x == 32767);
+    }
+
+    #[test(x = -2147483648i32)]
+    fun i32_param_at_min_value(x: i32) {
+        assert!(x == -2147483648);
+    }
+
+    #[test(x = 9223372036854775807i64)]
+    fun i64_param_at_max_value(x: i64) {
+        assert!(x == 9223372036854775807);
+    }
+
+    #[test(x = -170141183460469231731687303715884105728i128)]
+    fun i128_param_at_min_value(x: i128) {
+        assert!(x == -170141183460469231731687303715884105728);
+    }
+
+    // ---------------------------------------------------------------------------
+    // 256-bit parameters, at their own boundary.
+    // ---------------------------------------------------------------------------
+
+    #[test(x = 57896044618658097711785492504343953926634992332820282019728792003956564819967i256)]
+    fun i256_param_at_max_value(x: i256) {
+        assert!(x == 57896044618658097711785492504343953926634992332820282019728792003956564819967);
+    }
+
+    #[test(x = 115792089237316195423570985008687907853269984665640564039457584007913129639935u256)]
+    fun u256_param_at_max_value(x: u256) {
+        assert!(x == 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Signer, address, unsigned, signed, and 256-bit parameters mixed in one
+    // function.
+    // ---------------------------------------------------------------------------
+
+    #[test(account = @0x1, threshold = 100, delta = -7, big = 5u256)]
+    #[test(account = @0x2, threshold = 200, delta = 7, big = 10u256)]
+    fun mixed_signer_integer_signed_and_256_bit_params(
+        account: signer,
+        threshold: u64,
+        delta: i64,
+        big: u256,
+    ) {
+        assert!(!blacklisted(owner_of(&account)));
+        assert!(threshold > 0);
+        assert!(delta == -7 || delta == 7);
+        assert!(big == 5 || big == 10);
+    }
 }
