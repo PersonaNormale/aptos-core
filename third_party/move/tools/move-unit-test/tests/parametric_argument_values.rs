@@ -351,3 +351,30 @@ fn i256_unsuffixed_suffixed_and_boundary_values_are_supported() {
         vec![MoveValue::I256(I256::MIN)]
     );
 }
+
+#[test]
+fn u256_unsuffixed_suffixed_and_max_boundary_are_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(x = 5)]
+            #[test(x = 115792089237316195423570985008687907853269984665640564039457584007913129639935u256)]
+            fun u256_accepted(x: u256) {
+                let _ = x;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(
+        module.tests.get("u256_accepted@case0").unwrap().arguments,
+        vec![MoveValue::U256(U256::from(5u64))]
+    );
+    assert_eq!(
+        module.tests.get("u256_accepted@case1").unwrap().arguments,
+        vec![MoveValue::U256(U256::MAX)]
+    );
+}
