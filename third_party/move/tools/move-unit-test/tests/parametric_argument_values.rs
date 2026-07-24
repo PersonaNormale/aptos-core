@@ -240,3 +240,40 @@ fn i32_unsuffixed_suffixed_and_boundary_values_are_supported() {
         vec![MoveValue::I32(-2147483648)]
     );
 }
+
+#[test]
+fn i64_unsuffixed_suffixed_and_boundary_values_are_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(x = -5)]
+            #[test(x = 5i64)]
+            #[test(x = 9223372036854775807i64)]
+            #[test(x = -9223372036854775808i64)]
+            fun i64_accepted(x: i64) {
+                let _ = x;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(
+        module.tests.get("i64_accepted@case0").unwrap().arguments,
+        vec![MoveValue::I64(-5)]
+    );
+    assert_eq!(
+        module.tests.get("i64_accepted@case1").unwrap().arguments,
+        vec![MoveValue::I64(5)]
+    );
+    assert_eq!(
+        module.tests.get("i64_accepted@case2").unwrap().arguments,
+        vec![MoveValue::I64(9223372036854775807)]
+    );
+    assert_eq!(
+        module.tests.get("i64_accepted@case3").unwrap().arguments,
+        vec![MoveValue::I64(-9223372036854775808)]
+    );
+}
