@@ -1,9 +1,9 @@
 
 Diagnostics:
 error: unable to generate test: mismatched types
-  ┌─ tests/unit_test/test/parametric_i128_suffix_mismatch.move:4:7
+  ┌─ tests/unit_test/test/parametric_i128_suffix_mismatch.move:5:7
   │
-4 │     #[test(x = 5i8)]
+5 │     #[test(x = 5i8)]
   │       ^^^^^^^^^^^^^ attribute value is explicitly typed `i8`, which disagrees with this parameter
-5 │     fun mismatch(x: i128) {
-  │                 - corresponding to this parameter
+6 │     fun mismatch(x: i128) {
+  │                  - corresponding to this parameter

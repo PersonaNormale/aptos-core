@@ -6,4 +6,4 @@ error: unable to generate test: literal out of range
 4 │     #[test(x = -32769)]
   │       ^^^^^^^^^^^^^^^^ value must be between `-32768` and `32767` for this parameter
 5 │     fun out_of_range(x: i16) {
-  │                     - corresponding to this parameter
+  │                      - corresponding to this parameter
