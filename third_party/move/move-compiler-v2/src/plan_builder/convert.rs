@@ -468,7 +468,7 @@ fn bigint_to_u256(n: &BigInt) -> U256 {
 /// it up to 32 bytes with the sign-matching fill byte (`0xff` negative, `0x00` non-negative) is
 /// exactly sign extension, and is `I256`'s own little-endian layout.
 fn bigint_to_i256(n: &BigInt) -> I256 {
-    let fill = if n.sign() == Sign::Minus { 0xffu8 } else { 0u8 };
+    let fill = if n.sign() == Sign::Minus { 0xFFu8 } else { 0u8 };
     let magnitude = n.to_signed_bytes_le();
     let mut bytes = [fill; 32];
     bytes[..magnitude.len()].copy_from_slice(&magnitude);

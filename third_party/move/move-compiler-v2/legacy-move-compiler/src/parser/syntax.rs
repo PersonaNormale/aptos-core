@@ -825,7 +825,9 @@ fn parse_typed_bind(context: &mut Context) -> Result<TypedBind, Box<Diagnostic>>
 // followed by a numeral standing alone, e.g. `-0x1::module`, where `NumValue` continues into a
 // `::` access, leaving the token stream untouched so the caller falls back to its own handling.
 // Assumes the caller has already confirmed `context.tokens.peek() == Tok::Minus`.
-fn maybe_parse_negative_num_literal(context: &mut Context) -> Result<Option<Value>, Box<Diagnostic>> {
+fn maybe_parse_negative_num_literal(
+    context: &mut Context,
+) -> Result<Option<Value>, Box<Diagnostic>> {
     let is_negative_literal = match context.tokens.lookahead2()? {
         (Tok::NumTypedValue, _) => true,
         (Tok::NumValue, after) => after != Tok::ColonColon,
