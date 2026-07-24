@@ -1,7 +1,11 @@
 // Copyright (c) Aptos Foundation
 // Licensed pursuant to the Innovation-Enabling Source Code License, available at https://github.com/aptos-labs/aptos-core/blob/main/LICENSE
 
-use move_core_types::{account_address::AccountAddress, value::MoveValue};
+use move_core_types::{
+    account_address::AccountAddress,
+    int256::{I256, U256},
+    value::MoveValue,
+};
 use move_unit_test::UnitTestingConfig;
 use std::fs;
 use tempfile::tempdir;
@@ -124,4 +128,41 @@ fn mixed_signer_address_and_number_parameters() {
         MoveValue::Address(AccountAddress::from_hex_literal("0x2").unwrap()),
         MoveValue::U64(100),
     ]);
+}
+
+#[test]
+fn i8_unsuffixed_suffixed_and_boundary_values_are_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(x = -5)]
+            #[test(x = 5i8)]
+            #[test(x = 127i8)]
+            #[test(x = -128i8)]
+            fun i8_accepted(x: i8) {
+                let _ = x;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(
+        module.tests.get("i8_accepted@case0").unwrap().arguments,
+        vec![MoveValue::I8(-5)]
+    );
+    assert_eq!(
+        module.tests.get("i8_accepted@case1").unwrap().arguments,
+        vec![MoveValue::I8(5)]
+    );
+    assert_eq!(
+        module.tests.get("i8_accepted@case2").unwrap().arguments,
+        vec![MoveValue::I8(127)]
+    );
+    assert_eq!(
+        module.tests.get("i8_accepted@case3").unwrap().arguments,
+        vec![MoveValue::I8(-128)]
+    );
 }
