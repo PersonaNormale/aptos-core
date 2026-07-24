@@ -378,3 +378,39 @@ fn u256_unsuffixed_suffixed_and_max_boundary_are_supported() {
         vec![MoveValue::U256(U256::MAX)]
     );
 }
+
+#[test]
+fn mixed_signer_address_number_signed_and_256_bit_parameters() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(account = @0x1, addr = @0x2, threshold = 100, delta = -7, big = 5u256)]
+            fun mixed(
+                account: signer,
+                addr: address,
+                threshold: u64,
+                delta: i64,
+                big: u256,
+            ) {
+                let _ = account;
+                let _ = addr;
+                let _ = threshold;
+                let _ = delta;
+                let _ = big;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+    let test_case = module.tests.get("mixed").unwrap();
+
+    assert_eq!(test_case.arguments, vec![
+        MoveValue::Signer(AccountAddress::from_hex_literal("0x1").unwrap()),
+        MoveValue::Address(AccountAddress::from_hex_literal("0x2").unwrap()),
+        MoveValue::U64(100),
+        MoveValue::I64(-7),
+        MoveValue::U256(U256::from(5u64)),
+    ]);
+}
