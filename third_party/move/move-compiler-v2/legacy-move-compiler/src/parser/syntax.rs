@@ -683,7 +683,11 @@ fn parse_visibility(context: &mut Context) -> Result<Visibility, Box<Diagnostic>
 //          <Value>
 //          | <NameAccessChain>
 fn parse_attribute_value(context: &mut Context) -> Result<AttributeValue, Box<Diagnostic>> {
-    if let Some(v) = maybe_parse_value(context)? {
+    if context.tokens.peek() == Tok::Minus {
+        if let Some(v) = maybe_parse_negative_num_literal(context)? {
+            return Ok(sp(v.loc, AttributeValue_::Value(v)));
+        }
+    } else if let Some(v) = maybe_parse_value(context)? {
         return Ok(sp(v.loc, AttributeValue_::Value(v)));
     }
 
@@ -816,35 +820,43 @@ fn parse_typed_bind(context: &mut Context) -> Result<TypedBind, Box<Diagnostic>>
     ))
 }
 
+// Recognizes a `-`-prefixed numeric literal (`-5`, `-5u8`) by delegating the numeral itself to
+// `maybe_parse_value`, then folding the sign into its text. Returns `Ok(None)` if `Minus` is not
+// followed by a numeral standing alone, e.g. `-0x1::module`, where `NumValue` continues into a
+// `::` access, leaving the token stream untouched so the caller falls back to its own handling.
+// Assumes the caller has already confirmed `context.tokens.peek() == Tok::Minus`.
+fn maybe_parse_negative_num_literal(context: &mut Context) -> Result<Option<Value>, Box<Diagnostic>> {
+    let is_negative_literal = match context.tokens.lookahead2()? {
+        (Tok::NumTypedValue, _) => true,
+        (Tok::NumValue, after) => after != Tok::ColonColon,
+        _ => false,
+    };
+    if !is_negative_literal {
+        return Ok(None);
+    }
+    let start_loc = context.tokens.start_loc();
+    context.tokens.advance()?; // consume `-`
+    let val = parse_value(context)?;
+    let end_loc = context.tokens.previous_end_loc();
+    let neg_num = match val.value {
+        Value_::Num(s) => Value_::Num(Symbol::from(format!("-{}", s.as_str()))),
+        _ => unreachable!("expected numeric value after minus in a negative literal"),
+    };
+    Ok(Some(spanned(
+        context.tokens.file_hash(),
+        start_loc,
+        end_loc,
+        neg_num,
+    )))
+}
+
 // Try to parse a literal value usable in a match pattern. Handles non-negative
 // numeric literals, bools, byte strings, and negative numeric literals (e.g. -1i8).
 // Returns `Ok(None)` if the current position doesn't start a literal pattern.
 fn maybe_parse_literal_pattern(context: &mut Context) -> Result<Option<Value>, Box<Diagnostic>> {
     let tok = context.tokens.peek();
-    // Negative numeric literal: `-` followed by a number, but not `-0x1::module`.
     if tok == Tok::Minus {
-        let is_negative_literal = match context.tokens.lookahead2()? {
-            (Tok::NumTypedValue, _) => true,
-            (Tok::NumValue, after) => after != Tok::ColonColon,
-            _ => false,
-        };
-        if is_negative_literal {
-            let start_loc = context.tokens.start_loc();
-            context.tokens.advance()?; // consume `-`
-            let val = parse_value(context)?;
-            let end_loc = context.tokens.previous_end_loc();
-            let neg_num = match val.value {
-                Value_::Num(s) => Value_::Num(Symbol::from(format!("-{}", s.as_str()))),
-                _ => unreachable!("expected numeric value after minus in pattern"),
-            };
-            return Ok(Some(spanned(
-                context.tokens.file_hash(),
-                start_loc,
-                end_loc,
-                neg_num,
-            )));
-        }
-        return Ok(None);
+        return maybe_parse_negative_num_literal(context);
     }
     // Positive literal: bool, typed number, byte string, or untyped number
     // (excluding `NumValue ::` which is a module access like `0x1::module`).
