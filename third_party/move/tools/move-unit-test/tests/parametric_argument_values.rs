@@ -203,3 +203,40 @@ fn i16_unsuffixed_suffixed_and_boundary_values_are_supported() {
         vec![MoveValue::I16(-32768)]
     );
 }
+
+#[test]
+fn i32_unsuffixed_suffixed_and_boundary_values_are_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(x = -5)]
+            #[test(x = 5i32)]
+            #[test(x = 2147483647i32)]
+            #[test(x = -2147483648i32)]
+            fun i32_accepted(x: i32) {
+                let _ = x;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(
+        module.tests.get("i32_accepted@case0").unwrap().arguments,
+        vec![MoveValue::I32(-5)]
+    );
+    assert_eq!(
+        module.tests.get("i32_accepted@case1").unwrap().arguments,
+        vec![MoveValue::I32(5)]
+    );
+    assert_eq!(
+        module.tests.get("i32_accepted@case2").unwrap().arguments,
+        vec![MoveValue::I32(2147483647)]
+    );
+    assert_eq!(
+        module.tests.get("i32_accepted@case3").unwrap().arguments,
+        vec![MoveValue::I32(-2147483648)]
+    );
+}
