@@ -10,10 +10,7 @@ use super::error::{Checked, ErrorReported};
 use codespan_reporting::diagnostic::Severity;
 use legacy_move_compiler::shared::known_attributes::TestingAttribute;
 use move_core_types::{
-    account_address::AccountAddress,
-    identifier::Identifier,
-    int256::{I256, U256},
-    language_storage::ModuleId,
+    account_address::AccountAddress, identifier::Identifier, language_storage::ModuleId,
     value::MoveValue,
 };
 use move_model::{
@@ -22,7 +19,7 @@ use move_model::{
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
-use num::{bigint::Sign, BigInt, ToPrimitive};
+use num::{BigInt, ToPrimitive};
 use std::collections::BTreeMap;
 
 /// One variant per `TestingAttribute::expected_failure_cases()` entry.
@@ -399,9 +396,9 @@ pub(super) fn to_move_value(
         PrimitiveType::I128 => expect_bounded_number(value, node_id, PrimitiveType::I128, env)
             .map(|n| MoveValue::I128(n.to_i128().expect("bounds already checked"))),
         PrimitiveType::U256 => expect_bounded_number(value, node_id, PrimitiveType::U256, env)
-            .map(|n| MoveValue::U256(bigint_to_u256(n))),
+            .map(|n| MoveValue::U256(n.clone().try_into().expect("bounds already checked"))),
         PrimitiveType::I256 => expect_bounded_number(value, node_id, PrimitiveType::I256, env)
-            .map(|n| MoveValue::I256(bigint_to_i256(n))),
+            .map(|n| MoveValue::I256(n.clone().try_into().expect("bounds already checked"))),
         PrimitiveType::Bool
         | PrimitiveType::Num
         | PrimitiveType::Range
@@ -449,28 +446,4 @@ fn expect_bounded_number<'a>(
         return Err(ConversionError::OutOfRange { min, max });
     }
     Ok(n)
-}
-
-/// Converts a `BigInt` already known to be within `[0, U256::MAX]` (checked by
-/// `expect_bounded_number` before this is ever called) into a `U256`. `to_bytes_le` returns the
-/// value's unsigned magnitude, little-endian; since `n` is bounds-checked, that magnitude is at
-/// most 32 bytes and zero-padding it up to 32 is exactly `U256`'s own little-endian layout.
-fn bigint_to_u256(n: &BigInt) -> U256 {
-    let (_, magnitude) = n.to_bytes_le();
-    let mut bytes = [0u8; 32];
-    bytes[..magnitude.len()].copy_from_slice(&magnitude);
-    U256::from_le_bytes(bytes)
-}
-
-/// Converts a `BigInt` already known to be within `[I256::MIN, I256::MAX]` (checked by
-/// `expect_bounded_number` before this is ever called) into an `I256`. `to_signed_bytes_le`
-/// returns the value's two's-complement encoding, little-endian, at its minimal length; extending
-/// it up to 32 bytes with the sign-matching fill byte (`0xff` negative, `0x00` non-negative) is
-/// exactly sign extension, and is `I256`'s own little-endian layout.
-fn bigint_to_i256(n: &BigInt) -> I256 {
-    let fill = if n.sign() == Sign::Minus { 0xFFu8 } else { 0u8 };
-    let magnitude = n.to_signed_bytes_le();
-    let mut bytes = [fill; 32];
-    bytes[..magnitude.len()].copy_from_slice(&magnitude);
-    I256::from_le_bytes(bytes)
 }
