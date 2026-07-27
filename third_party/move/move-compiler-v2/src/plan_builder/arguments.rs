@@ -93,13 +93,13 @@ pub(super) fn build_case_arguments(
 }
 
 /// The `Type` a `#[test(...)]` assignment must be checked against for this declared parameter
-/// type, or `None` if `ty` is not a supported parameter shape (a struct or other non-primitive,
+/// type, or `None` if `ty` is not a supported parameter type (a struct or other non-primitive,
 /// non-vector type). Recurses through `Type::Vector` so `vector<vector<u8>>` is supported to
 /// unbounded depth, the same as any other `vector<T>`.
 ///
-/// `&signer` is the only reference shape accepted, matching the one special case Move's own test
+/// `&signer` is the only reference type accepted, matching the one special case Move's own test
 /// harness constructs by reference. No other primitive is accepted by reference: `ty` being e.g.
-/// `&u8` is not a supported parameter shape either, and neither is `vector<T>` behind a reference.
+/// `&u8` is not a supported parameter type either, and neither is `vector<T>` behind a reference.
 fn supported_param_type(ty: &Type) -> Option<Type> {
     match ty {
         Type::Primitive(p) => Some(Type::Primitive(*p)),
@@ -112,7 +112,7 @@ fn supported_param_type(ty: &Type) -> Option<Type> {
 }
 
 /// Reports a `ConversionError` from `to_move_value` at the attribute's own location, labeling
-/// the specific parameter it was assigned to - the two-location shape `build_case_arguments`
+/// the specific parameter it was assigned to - the two-location pattern `build_case_arguments`
 /// already used for its "expected an address or signer" diagnostic before this layer.
 fn report_conversion_error(
     env: &GlobalEnv,

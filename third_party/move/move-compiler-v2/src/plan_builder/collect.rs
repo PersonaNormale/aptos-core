@@ -91,7 +91,7 @@ fn collect_test_attributes<'a>(
     }
 }
 
-/// Owns every cross-case invariant for one function's test attributes, from shape validation
+/// Owns every cross-case invariant for one function's test attributes, from case validity
 /// through zero-arg distinctness.
 pub(super) fn collect_and_validate_test_cases<'a>(
     env: &GlobalEnv,
