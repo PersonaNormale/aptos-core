@@ -162,6 +162,7 @@ pub struct FunParamAccessOf {
 pub enum AttributeValue {
     Value(NodeId, Value),
     Name(NodeId, Option<ModuleName>, Symbol),
+    Vector(NodeId, Vec<AttributeValue>),
 }
 
 #[derive(Debug, Clone)]

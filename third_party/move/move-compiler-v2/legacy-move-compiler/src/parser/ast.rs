@@ -102,7 +102,7 @@ pub enum Use {
     Members(ModuleIdent, Vec<(Name, Option<Name>)>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UseDecl {
     pub attributes: Vec<Attributes>,
     pub use_: Use,
@@ -112,14 +112,15 @@ pub struct UseDecl {
 // Attributes
 //**************************************************************************************************
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AttributeValue_ {
     Value(Value),
     ModuleAccess(NameAccessChain),
+    Vector(Option<Type>, Vec<AttributeValue>),
 }
 pub type AttributeValue = Spanned<AttributeValue_>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Attribute_ {
     Name(Name),
     Assigned(Name, Box<AttributeValue>),
@@ -1340,6 +1341,17 @@ impl AstDebug for AttributeValue_ {
         match self {
             AttributeValue_::Value(v) => v.ast_debug(w),
             AttributeValue_::ModuleAccess(n) => n.ast_debug(w),
+            AttributeValue_::Vector(ty_opt, elems) => {
+                w.write("vector");
+                if let Some(ty) = ty_opt {
+                    w.write("<");
+                    ty.ast_debug(w);
+                    w.write(">");
+                }
+                w.write("[");
+                w.comma(elems, |w, e| e.ast_debug(w));
+                w.write("]");
+            },
         }
     }
 }

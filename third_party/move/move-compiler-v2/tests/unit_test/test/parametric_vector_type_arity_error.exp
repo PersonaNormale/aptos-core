@@ -1,0 +1,7 @@
+
+Diagnostics:
+error: unexpected token
+  ┌─ tests/unit_test/test/parametric_vector_type_arity_error.move:3:23
+  │
+3 │     #[test(xs = vector<u8, u16>[1, 2, 3])]
+  │                       ^^^^^^^^^ 'vector' literal expects exactly one type argument, found 2
