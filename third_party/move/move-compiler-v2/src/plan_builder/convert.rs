@@ -164,6 +164,14 @@ pub(super) fn resolve_location(env: &GlobalEnv, attr: &Attribute) -> Checked<Mod
             )]);
             Err(ErrorReported)
         },
+        AttributeValue::Vector(id, _elems) => {
+            let vloc = env.get_node_loc(id);
+            env.error_with_labels(&loc, "invalid attribute value", vec![(
+                vloc,
+                "expected a module identifier, e.g. `std::vector`".to_string(),
+            )]);
+            Err(ErrorReported)
+        },
     }
 }
 
@@ -187,6 +195,11 @@ pub(super) fn resolve_u64_constant_or_literal(
             let mod_id = resolve_module_id(env, vloc.clone(), opt_module_name.clone());
             let u = constant_value_to_u64(env, &vloc, &module_name, *member, ty, value)?;
             Ok((vloc, mod_id, u))
+        },
+        AttributeValue::Vector(id, _elems) => {
+            let vloc = env.get_node_loc(*id);
+            env.error(&vloc, "expected a `u64` literal or a `u64` module constant");
+            Err(ErrorReported)
         },
     }
 }
@@ -353,21 +366,57 @@ pub(super) enum ConversionError {
     NotANumber,
     NotAnAddress,
     NotABool,
-    TypeMismatch { declared: PrimitiveType },
+    TypeMismatch { declared: Type },
     OutOfRange { min: BigInt, max: BigInt },
     UnsupportedParameterType,
 }
 
 /// Converts a `#[test(...)]` attribute value into the `MoveValue` a parameter of type `target`
-/// expects.
+/// expects. `value` carries its own `NodeId` at every nesting level (`AttributeValue::Value` and
+/// `AttributeValue::Vector` both do), so explicit-type and suffix checks work identically whether
+/// `value` is the whole attribute assignment or an element nested inside a vector.
 ///
 /// Not `std::convert::TryFrom`: resolving a symbolic address alias needs `env`, and `TryFrom`'s
-/// signature has no room for it. `node_id` is the attribute value's own node id, used to read
-/// back an explicit literal suffix (`5u8`) through `env.get_node_type`; an unsuffixed literal
-/// (`5`) never finalizes to a concrete type at this node, so that check is skipped for it.
-/// Emits no diagnostic; the caller owns the parameter's location and reports the failure
-/// itself.
+/// signature has no room for it. Emits no diagnostic; the caller owns the parameter's location and
+/// reports the failure itself.
 pub(super) fn to_move_value(
+    value: &AttributeValue,
+    target: &Type,
+    env: &GlobalEnv,
+) -> Result<MoveValue, ConversionError> {
+    match (value, target) {
+        (AttributeValue::Value(node_id, val), Type::Primitive(p)) => {
+            to_move_scalar(val, *node_id, *p, env)
+        },
+        (AttributeValue::Vector(node_id, elems), Type::Vector(inner)) => {
+            // `translate_attribute_value` (module_builder.rs) only calls `update_node_type` on a
+            // vector's own node when the literal carried an explicit `vector<T>[...]` annotation;
+            // otherwise the node keeps the `Type::Tuple(vec![])` sentinel `env.new_node` initialized
+            // it with. That sentinel means "no explicit type to check", exactly mirroring how an
+            // unsuffixed scalar's node type stays an unresolved `Type::Var` until conversion time.
+            let declared = env.get_node_type(*node_id);
+            if declared != Type::Tuple(vec![]) && declared != Type::Vector(inner.clone()) {
+                return Err(ConversionError::TypeMismatch { declared });
+            }
+            let converted = elems
+                .iter()
+                .map(|elem| to_move_value(elem, inner, env))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(MoveValue::Vector(converted))
+        },
+        (AttributeValue::Value(node_id, _), _) => Err(ConversionError::TypeMismatch {
+            declared: env.get_node_type(*node_id),
+        }),
+        (AttributeValue::Vector(node_id, _), _) => Err(ConversionError::TypeMismatch {
+            declared: env.get_node_type(*node_id),
+        }),
+        (AttributeValue::Name(..), _) => Err(ConversionError::UnsupportedParameterType),
+    }
+}
+
+/// The scalar leaf of `to_move_value`: per-primitive conversion, dispatched from the top level or
+/// from the `Vector` arm for each element.
+fn to_move_scalar(
     value: &Value,
     node_id: NodeId,
     target: PrimitiveType,
@@ -449,7 +498,9 @@ fn expect_bounded_number<'a>(
     };
     if let Type::Primitive(declared) = env.get_node_type(node_id) {
         if declared != target {
-            return Err(ConversionError::TypeMismatch { declared });
+            return Err(ConversionError::TypeMismatch {
+                declared: Type::Primitive(declared),
+            });
         }
     }
     let min = target.get_min_value().expect("numeric target has a min");
