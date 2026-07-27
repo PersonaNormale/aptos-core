@@ -352,6 +352,7 @@ pub(super) fn require_location_attr<T>(
 pub(super) enum ConversionError {
     NotANumber,
     NotAnAddress,
+    NotABool,
     TypeMismatch { declared: PrimitiveType },
     OutOfRange { min: BigInt, max: BigInt },
     UnsupportedParameterType,
@@ -375,6 +376,7 @@ pub(super) fn to_move_value(
     match target {
         PrimitiveType::Address => expect_address(value, env).map(MoveValue::Address),
         PrimitiveType::Signer => expect_address(value, env).map(MoveValue::Signer),
+        PrimitiveType::Bool => expect_bool(value).map(MoveValue::Bool),
         PrimitiveType::U8 => expect_bounded_number(value, node_id, PrimitiveType::U8, env)
             .map(|n| MoveValue::U8(n.to_u8().expect("bounds already checked"))),
         PrimitiveType::U16 => expect_bounded_number(value, node_id, PrimitiveType::U16, env)
@@ -399,10 +401,9 @@ pub(super) fn to_move_value(
             .map(|n| MoveValue::U256(n.clone().try_into().expect("bounds already checked"))),
         PrimitiveType::I256 => expect_bounded_number(value, node_id, PrimitiveType::I256, env)
             .map(|n| MoveValue::I256(n.clone().try_into().expect("bounds already checked"))),
-        PrimitiveType::Bool
-        | PrimitiveType::Num
-        | PrimitiveType::Range
-        | PrimitiveType::EventStore => Err(ConversionError::UnsupportedParameterType),
+        PrimitiveType::Num | PrimitiveType::Range | PrimitiveType::EventStore => {
+            Err(ConversionError::UnsupportedParameterType)
+        },
     }
 }
 
@@ -418,6 +419,17 @@ fn expect_address(value: &Value, env: &GlobalEnv) -> Result<AccountAddress, Conv
             .resolve_address_alias(*sym)
             .ok_or(ConversionError::NotAnAddress),
     }
+}
+
+/// Resolves a `Value::Bool`. Unlike a numeric literal, `true`/`false` never needs a suffix check:
+/// the model builder already resolves a bool literal to a fully concrete `Type::Primitive(Bool)`
+/// with no unsuffixed-default ambiguity, so there is nothing left to verify here beyond the value
+/// kind itself.
+fn expect_bool(value: &Value) -> Result<bool, ConversionError> {
+    let Value::Bool(b) = value else {
+        return Err(ConversionError::NotABool);
+    };
+    Ok(*b)
 }
 
 /// Resolves a `Value::Number`, checking it against `target`'s bounds. If the literal carried an
