@@ -1,4 +1,4 @@
-// bool is not a supported test attribute parameter type.
+// bool is a supported test attribute parameter type.
 address 0x1 {
 module M {
     #[test(flag = true)]

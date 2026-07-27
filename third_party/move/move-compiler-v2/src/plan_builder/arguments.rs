@@ -127,6 +127,10 @@ fn report_conversion_error(
             "unable to generate test: unexpected argument type",
             "expected an `address` or `signer` literal".to_string(),
         ),
+        ConversionError::NotABool => (
+            "unable to generate test: unexpected argument type",
+            "expected a `bool` literal (`true` or `false`)".to_string(),
+        ),
         ConversionError::TypeMismatch { declared } => (
             "unable to generate test: mismatched types",
             format!(
@@ -143,7 +147,8 @@ fn report_conversion_error(
         ),
         ConversionError::UnsupportedParameterType => (
             "unable to generate test: unsupported parameter type",
-            "test attribute assignments only support `signer`, `address`, and integer parameters"
+            "test attribute assignments only support `signer`, `address`, `bool`, and integer \
+             parameters"
                 .to_string(),
         ),
     };

@@ -414,3 +414,30 @@ fn mixed_signer_address_number_signed_and_256_bit_parameters() {
         MoveValue::U256(U256::from(5u64)),
     ]);
 }
+
+#[test]
+fn bool_true_and_false_are_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(b = true)]
+            #[test(b = false)]
+            fun bool_accepted(b: bool) {
+                let _ = b;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(
+        module.tests.get("bool_accepted@case0").unwrap().arguments,
+        vec![MoveValue::Bool(true)]
+    );
+    assert_eq!(
+        module.tests.get("bool_accepted@case1").unwrap().arguments,
+        vec![MoveValue::Bool(false)]
+    );
+}

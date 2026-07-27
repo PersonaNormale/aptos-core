@@ -247,4 +247,14 @@ module parametric_testing::example {
         assert!(delta == -7 || delta == 7);
         assert!(big == 5 || big == 10);
     }
+
+    // ---------------------------------------------------------------------------
+    // Bool parameter.
+    // ---------------------------------------------------------------------------
+
+    #[test(flag = true)]
+    #[test(flag = false)]
+    fun bool_param_accepts_true_and_false(flag: bool) {
+        assert!(flag || !flag);
+    }
 }
