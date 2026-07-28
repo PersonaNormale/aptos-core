@@ -352,4 +352,58 @@ module parametric_testing::example {
         assert!(!flagged);
         assert!(vector::length(&xs) == 3);
     }
+
+    // ---------------------------------------------------------------------------
+    // Struct parameter, named and positional forms. Both reuse Move's ordinary
+    // Pack-expression grammar in attribute position.
+    // ---------------------------------------------------------------------------
+
+    struct Point has copy, drop { x: u8, y: u8 }
+    struct Pair(u8, u8) has copy, drop;
+
+    #[test(p = Point { x: 1, y: 2 })]
+    fun named_struct_param(p: Point) {
+        assert!(p.x == 1);
+        assert!(p.y == 2);
+    }
+
+    #[test(p = Pair(1, 2))]
+    fun positional_struct_param(p: Pair) {
+        assert!(p.0 == 1);
+        assert!(p.1 == 2);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Generic struct, explicit and inferred type arguments.
+    // ---------------------------------------------------------------------------
+
+    struct Wrapper<T> has copy, drop { val: T }
+
+    #[test(w = Wrapper<u8> { val: 5 })]
+    fun explicit_generic_struct_param(w: Wrapper<u8>) {
+        assert!(w.val == 5);
+    }
+
+    #[test(w = Wrapper { val: 5 })]
+    fun inferred_generic_struct_param(w: Wrapper<u8>) {
+        assert!(w.val == 5);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Nesting: a struct field may be a vector, and a vector element may be a
+    // struct, to any depth.
+    // ---------------------------------------------------------------------------
+
+    struct Nested has copy, drop { pt: Point, tags: vector<u8> }
+
+    #[test(n = Nested { pt: Point { x: 1, y: 2 }, tags: vector[9, 8] })]
+    fun nested_struct_param(n: Nested) {
+        assert!(n.pt.x == 1);
+        assert!(vector::length(&n.tags) == 2);
+    }
+
+    #[test(v = vector[Point { x: 1, y: 2 }, Point { x: 3, y: 4 }])]
+    fun vector_of_structs_param(v: vector<Point>) {
+        assert!(vector::length(&v) == 2);
+    }
 }
