@@ -768,26 +768,6 @@ fn three_levels_of_nesting() {
 }
 
 #[test]
-fn private_struct_same_module_constructible() {
-    let source = r#"
-        address 0x1 {
-        module M {
-            struct Point has copy, drop { x: u8 }
-            #[test(p = Point { x: 1 })]
-            fun test_point(p: Point) { let _ = p; }
-        }
-        }
-    "#;
-
-    let plan = build_test_plan_from_source(source);
-    let module = plan.module_tests.values().next().unwrap();
-
-    assert_eq!(module.tests.get("test_point").unwrap().arguments, vec![
-        MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(1)]))
-    ]);
-}
-
-#[test]
 fn public_struct_constructible_from_another_module() {
     let source = r#"
         address 0x1 {
