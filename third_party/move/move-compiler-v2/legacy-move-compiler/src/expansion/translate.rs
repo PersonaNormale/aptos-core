@@ -23,7 +23,11 @@ use crate::{
     },
     shared::{
         builtins,
-        known_attributes::{AttributeKind, AttributePosition, KnownAttribute, TestingAttribute},
+        known_attributes::{
+            AttributeKind, AttributePosition, DeprecationAttribute, ExecutionAttribute,
+            KnownAttribute, LintAttribute, NativeAttribute, TestingAttribute,
+            VerificationAttribute,
+        },
         unique_map::UniqueMap,
         CompilationEnv, Identifier, Name, NamedAddressMap, NamedAddressMaps, NumericalAddress,
     },
@@ -723,8 +727,21 @@ fn skip_dedup(name_: &E::AttributeName_, is_test_context: bool) -> bool {
         E::AttributeName_::Known(KnownAttribute::Testing(
             TestingAttribute::Test | TestingAttribute::ExpectedFailure,
         )) => true,
+        E::AttributeName_::Known(KnownAttribute::Testing(TestingAttribute::TestOnly)) => false,
+        E::AttributeName_::Known(KnownAttribute::Verification(
+            VerificationAttribute::VerifyOnly,
+        )) => false,
+        E::AttributeName_::Known(KnownAttribute::Native(
+            NativeAttribute::BytecodeInstruction | NativeAttribute::NativeInterface,
+        )) => false,
+        E::AttributeName_::Known(KnownAttribute::Deprecation(DeprecationAttribute::Deprecated)) => {
+            false
+        },
+        E::AttributeName_::Known(KnownAttribute::Lint(LintAttribute::Allow)) => false,
+        E::AttributeName_::Known(KnownAttribute::Execution(
+            ExecutionAttribute::Persistent | ExecutionAttribute::ModuleLock,
+        )) => false,
         E::AttributeName_::Unknown(_) => is_test_context,
-        _ => false,
     }
 }
 
