@@ -159,10 +159,23 @@ pub struct FunParamAccessOf {
 /// # Attributes
 
 #[derive(Debug, Clone)]
+pub enum PackFields {
+    Named(Vec<(Symbol, AttributeValue)>),
+    Positional(Vec<AttributeValue>),
+}
+
+#[derive(Debug, Clone)]
 pub enum AttributeValue {
     Value(NodeId, Value),
     Name(NodeId, Option<ModuleName>, Symbol),
     Vector(NodeId, Vec<AttributeValue>),
+    Pack(
+        NodeId,
+        Option<ModuleName>,
+        Symbol,
+        Option<Vec<Type>>,
+        PackFields,
+    ),
 }
 
 #[derive(Debug, Clone)]
