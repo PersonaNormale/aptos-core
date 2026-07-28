@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: struct not constructible here
+  ┌─ tests/unit_test/test/parametric_struct_visibility_error.move:6:7
+  │
+6 │     #[test(p = 0x1::Other::Private { x: 1 })]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Other::Private` can only be constructed within module `0x1::Other`
+7 │     fun test_private(p: 0x1::Other::Private) {
+  │                      - corresponding to this parameter

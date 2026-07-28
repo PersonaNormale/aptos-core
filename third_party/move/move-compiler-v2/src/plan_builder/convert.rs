@@ -402,6 +402,7 @@ pub(super) enum ConversionError {
     OutOfRange { min: BigInt, max: BigInt },
     UnsupportedParameterType,
     UnknownStruct,
+    EnumNotSupported,
     StructNotConstructible { struct_id: QualifiedId<StructId> },
     ConstructorMismatch { expected_positional: bool },
     MissingFields(Vec<Symbol>),
@@ -492,6 +493,13 @@ fn to_move_struct(
         return Err(ConversionError::TypeMismatch {
             declared: Type::Struct(struct_env.module_env.get_id(), struct_env.get_id(), vec![]),
         });
+    }
+    // `StructEnv::get_fields()` unions the fields of every variant for an enum (a struct with
+    // `StructLayout::Variants`), so the field-completeness/arity checks below would otherwise
+    // silently accept some enum literals instead of rejecting every one, per CLAUDE.md: enums
+    // are out of scope, `StructLayout::Variants` must never reach that recursion.
+    if struct_env.has_variants() {
+        return Err(ConversionError::EnumNotSupported);
     }
 
     let calling_module_env = env

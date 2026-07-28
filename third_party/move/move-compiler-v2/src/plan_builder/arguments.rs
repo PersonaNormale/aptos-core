@@ -168,6 +168,10 @@ fn report_conversion_error(
             "unable to generate test: unsupported parameter type",
             "no struct with this name was found".to_string(),
         ),
+        ConversionError::EnumNotSupported => (
+            "unable to generate test: unsupported parameter type",
+            "enums are not supported as test attribute parameters".to_string(),
+        ),
         ConversionError::StructNotConstructible { struct_id } => {
             let struct_env = env.get_struct(struct_id);
             (
