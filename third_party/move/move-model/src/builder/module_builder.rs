@@ -491,7 +491,29 @@ impl ModuleBuilder<'_, '_> {
                     None,
                     self.symbol_pool().make(n.value.as_str()),
                 ),
-                EA::ModuleAccess_::ModuleAccess(mident, n, _) => {
+                EA::ModuleAccess_::ModuleAccess(mident, n, Some(variant)) => {
+                    // A bare `Enum::Variant`, with no following `{`/`(`, is sugar for `Enum::Variant()`.
+                    // `check_no_variant_and_convert_maccess` exists for a different ambiguity
+                    // (spec-schema/const disambiguation) and hard-errors on any variant unconditionally,
+                    // so it is deliberately not called here.
+                    let addr_bytes = self
+                        .parent
+                        .resolve_address(&self.parent.to_loc(&macc.loc), &mident.value.address);
+                    let module_name = ModuleName::from_address_bytes_and_name(
+                        addr_bytes,
+                        self.symbol_pool()
+                            .make(mident.value.module.0.value.as_str()),
+                    );
+                    AttributeValue::Pack(
+                        value_node_id,
+                        Some(module_name),
+                        self.symbol_pool().make(n.value.as_str()),
+                        Some(self.symbol_pool().make(variant.value.as_str())),
+                        None,
+                        PackFields::Positional(vec![]),
+                    )
+                },
+                EA::ModuleAccess_::ModuleAccess(mident, n, None) => {
                     let (_, macc) = self.check_no_variant_and_convert_maccess(macc);
                     let addr_bytes = self
                         .parent
@@ -524,9 +546,11 @@ impl ModuleBuilder<'_, '_> {
                 AttributeValue::Vector(value_node_id, translated_elems)
             },
             EA::AttributeValue_::Pack(macc, opt_tys, pfields) => {
-                let (module_opt, name) = match &macc.value {
-                    EA::ModuleAccess_::Name(n) => (None, self.symbol_pool().make(n.value.as_str())),
-                    EA::ModuleAccess_::ModuleAccess(mident, n, _) => {
+                let (module_opt, name, variant_opt) = match &macc.value {
+                    EA::ModuleAccess_::Name(n) => {
+                        (None, self.symbol_pool().make(n.value.as_str()), None)
+                    },
+                    EA::ModuleAccess_::ModuleAccess(mident, n, v) => {
                         let addr_bytes = self
                             .parent
                             .resolve_address(&self.parent.to_loc(&macc.loc), &mident.value.address);
@@ -535,7 +559,11 @@ impl ModuleBuilder<'_, '_> {
                             self.symbol_pool()
                                 .make(mident.value.module.0.value.as_str()),
                         );
-                        (Some(module_name), self.symbol_pool().make(n.value.as_str()))
+                        (
+                            Some(module_name),
+                            self.symbol_pool().make(n.value.as_str()),
+                            v.map(|v| self.symbol_pool().make(v.value.as_str())),
+                        )
                     },
                 };
                 let model_tys_opt = opt_tys.as_ref().map(|tys| {
@@ -562,7 +590,14 @@ impl ModuleBuilder<'_, '_> {
                             .collect(),
                     ),
                 };
-                AttributeValue::Pack(value_node_id, module_opt, name, model_tys_opt, model_fields)
+                AttributeValue::Pack(
+                    value_node_id,
+                    module_opt,
+                    name,
+                    variant_opt,
+                    model_tys_opt,
+                    model_fields,
+                )
             },
         }
     }
