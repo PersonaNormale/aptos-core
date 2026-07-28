@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: wrong constructor kind
+  ┌─ tests/unit_test/test/parametric_struct_constructor_mismatch_positional_literal.move:5:7
+  │
+5 │     #[test(p = Point(1, 2))]
+  │       ^^^^^^^^^^^^^^^^^^^^^ expected a struct constructor `Name { .. }`
+6 │     fun positional_literal_against_named_struct(p: Point) {
+  │                                                 - corresponding to this parameter
