@@ -20,7 +20,7 @@ use move_model::{
         QualifiedId, StructEnv, TypeParameter,
     },
     symbol::Symbol,
-    ty::TypeDisplayContext,
+    ty::{Type, TypeDisplayContext},
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
@@ -682,16 +682,33 @@ impl<'env> Docgen<'env> {
                 };
                 format!("{}{}", module_prefix, symbol2_name)
             },
-            AttributeValue::Vector(_node_id, elems) => {
+            AttributeValue::Vector(node_id, elems) => {
                 let elems_string = elems.iter().map(|e| self.gen_attribute_value(e)).join(", ");
-                format!("vector[{}]", elems_string)
+                // `Type::Tuple(vec![])` is the sentinel `translate_attribute_value` leaves in place
+                // when the literal had no explicit `vector<T>[...]` annotation (see convert.rs).
+                let declared = self.env.get_node_type(*node_id);
+                match declared {
+                    Type::Vector(inner) => {
+                        let tctx = TypeDisplayContext::new(self.env);
+                        format!("vector<{}>[{}]", inner.display(&tctx), elems_string)
+                    },
+                    _ => format!("vector[{}]", elems_string),
+                }
             },
-            AttributeValue::Pack(_node_id, module_name_option, name, _opt_type_args, fields) => {
+            AttributeValue::Pack(_node_id, module_name_option, name, opt_type_args, fields) => {
                 let name_str = self.name_string(*name).to_string();
                 let module_prefix = match module_name_option {
                     None => "".to_string(),
                     Some(module_name) => format!("{}::", module_name.display_full(self.env)),
                 };
+                let type_args_str = match opt_type_args {
+                    None => "".to_string(),
+                    Some(tys) => {
+                        let tctx = TypeDisplayContext::new(self.env);
+                        format!("<{}>", tys.iter().map(|ty| ty.display(&tctx)).join(", "))
+                    },
+                };
+                let name_str = format!("{}{}", name_str, type_args_str);
                 match fields {
                     PackFields::Named(named) => {
                         let fields_str = named
