@@ -794,3 +794,324 @@ fn public_struct_constructible_from_another_module() {
         MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(1)]))
     ]);
 }
+
+#[test]
+fn named_variant_same_module_is_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Shape has copy, drop { Circle { radius: u8 }, Square { side: u8 } }
+            #[test(s = Shape::Circle { radius: 5 })]
+            fun test_shape(s: Shape) { let _ = s; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_shape").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::U8(5)]))
+    ]);
+}
+
+#[test]
+fn named_variant_field_order_independent() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Shape has copy, drop { Circle { radius: u8, extra: u8 } }
+            #[test(s = Shape::Circle { extra: 9, radius: 5 })]
+            fun test_shape(s: Shape) { let _ = s; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_shape").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![
+            MoveValue::U8(5),
+            MoveValue::U8(9)
+        ]))
+    ]);
+}
+
+#[test]
+fn positional_variant_same_module_is_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Either has copy, drop { Left(u8), Right(u8) }
+            #[test(e = Either::Left(1))]
+            fun test_either(e: Either) { let _ = e; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_either").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::U8(1)]))
+    ]);
+}
+
+#[test]
+fn bare_unit_variant_is_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Color has copy, drop { Red, Green }
+            #[test(c = Color::Green)]
+            fun test_color(c: Color) { let _ = c; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_color").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(1, vec![]))
+    ]);
+}
+
+#[test]
+fn unit_variant_explicit_empty_parens_and_braces_agree() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Color has copy, drop { Red, Green }
+            #[test(a = Color::Red)]
+            fun bare(a: Color) { let _ = a; }
+            #[test(a = Color::Red())]
+            fun parens(a: Color) { let _ = a; }
+            #[test(a = Color::Red {})]
+            fun braces(a: Color) { let _ = a; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    let expected = vec![MoveValue::Struct(MoveStruct::new_variant(0, vec![]))];
+    assert_eq!(
+        module.tests.get("bare").unwrap().arguments,
+        expected.clone()
+    );
+    assert_eq!(
+        module.tests.get("parens").unwrap().arguments,
+        expected.clone()
+    );
+    assert_eq!(module.tests.get("braces").unwrap().arguments, expected);
+}
+
+#[test]
+fn generic_enum_variant_explicit_type_args_matching_parameter() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Wrapper<T> has copy, drop { Val(T) }
+            #[test(w = Wrapper::Val<u8>(5))]
+            fun test_wrapper(w: Wrapper<u8>) { let _ = w; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_wrapper").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::U8(5)]))
+    ]);
+}
+
+#[test]
+fn generic_enum_variant_type_args_inferred_from_parameter() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Wrapper<T> has copy, drop { Val(T) }
+            #[test(w = Wrapper::Val(5))]
+            fun test_wrapper(w: Wrapper<u8>) { let _ = w; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_wrapper").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::U8(5)]))
+    ]);
+}
+
+#[test]
+fn generic_enum_variant_two_type_parameters_one_used_per_field() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Both<A, B> has copy, drop { Pair(A, B) }
+            #[test(b = Both::Pair<u8, bool>(5, true))]
+            fun test_both(b: Both<u8, bool>) { let _ = b; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_both").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![
+            MoveValue::U8(5),
+            MoveValue::Bool(true)
+        ]))
+    ]);
+}
+
+#[test]
+fn variant_field_containing_a_vector() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Tagged has copy, drop { Tags(vector<u8>) }
+            #[test(t = Tagged::Tags(vector[9, 8]))]
+            fun test_tagged(t: Tagged) { let _ = t; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_tagged").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::Vector(vec![
+            MoveValue::U8(9),
+            MoveValue::U8(8)
+        ])]))
+    ]);
+}
+
+#[test]
+fn variant_field_containing_another_variant() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Either has copy, drop { Left(u8), Right(u8) }
+            enum Nested has copy, drop { Holds(Either) }
+            #[test(n = Nested::Holds(Either::Left(1)))]
+            fun test_nested(n: Nested) { let _ = n; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_nested").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::Struct(
+            MoveStruct::new_variant(0, vec![MoveValue::U8(1)])
+        )]))
+    ]);
+}
+
+#[test]
+fn vector_element_containing_a_variant() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Either has copy, drop { Left(u8), Right(u8) }
+            #[test(v = vector[Either::Left(1), Either::Right(2)])]
+            fun test_vec(v: vector<Either>) { let _ = v; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_vec").unwrap().arguments, vec![
+        MoveValue::Vector(vec![
+            MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::U8(1)])),
+            MoveValue::Struct(MoveStruct::new_variant(1, vec![MoveValue::U8(2)])),
+        ])
+    ]);
+}
+
+#[test]
+fn three_levels_of_nesting_with_a_variant() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Either has copy, drop { Left(u8), Right(u8) }
+            enum Nested has copy, drop { Holds(Either, vector<u8>) }
+            #[test(n = Nested::Holds(Either::Left(1), vector[9, 8]))]
+            fun test_nested(n: Nested) { let _ = n; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_nested").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![
+            MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::U8(1)])),
+            MoveValue::Vector(vec![MoveValue::U8(9), MoveValue::U8(8)]),
+        ]))
+    ]);
+}
+
+#[test]
+fn struct_field_containing_a_variant() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Either has copy, drop { Left(u8), Right(u8) }
+            struct Holder has copy, drop { inner: Either }
+            #[test(h = Holder { inner: Either::Left(1) })]
+            fun test_holder(h: Holder) { let _ = h; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_holder").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Struct(
+            MoveStruct::new_variant(0, vec![MoveValue::U8(1)])
+        )]))
+    ]);
+}
+
+#[test]
+fn public_enum_variant_constructible_from_another_module() {
+    let source = r#"
+        address 0x1 {
+        module Defines {
+            public enum Either has copy, drop { Left(u8), Right(u8) }
+        }
+        module M {
+            use 0x1::Defines::Either;
+            #[test(e = Either::Left(1))]
+            fun test_either(e: Either) { let _ = e; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan
+        .module_tests
+        .iter()
+        .find(|(id, _)| id.short_str_lossless().contains("M"))
+        .map(|(_, m)| m)
+        .unwrap();
+
+    assert_eq!(module.tests.get("test_either").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::U8(1)]))
+    ]);
+}
