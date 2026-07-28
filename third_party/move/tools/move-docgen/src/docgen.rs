@@ -10,7 +10,9 @@ use legacy_move_compiler::parser::keywords::{BUILTINS, CONTEXTUAL_KEYWORDS, KEYW
 use log::info;
 use move_core_types::{ability::AbilitySet, account_address::AccountAddress};
 use move_model::{
-    ast::{Address, Attribute, AttributeValue, ModuleName, SpecBlockInfo, SpecBlockTarget},
+    ast::{
+        Address, Attribute, AttributeValue, ModuleName, PackFields, SpecBlockInfo, SpecBlockTarget,
+    },
     code_writer::{CodeWriter, CodeWriterLabel},
     emit, emitln,
     model::{
@@ -683,6 +685,35 @@ impl<'env> Docgen<'env> {
             AttributeValue::Vector(_node_id, elems) => {
                 let elems_string = elems.iter().map(|e| self.gen_attribute_value(e)).join(", ");
                 format!("vector[{}]", elems_string)
+            },
+            AttributeValue::Pack(_node_id, module_name_option, name, _opt_type_args, fields) => {
+                let name_str = self.name_string(*name).to_string();
+                let module_prefix = match module_name_option {
+                    None => "".to_string(),
+                    Some(module_name) => format!("{}::", module_name.display_full(self.env)),
+                };
+                match fields {
+                    PackFields::Named(named) => {
+                        let fields_str = named
+                            .iter()
+                            .map(|(sym, v)| {
+                                format!(
+                                    "{}: {}",
+                                    self.name_string(*sym),
+                                    self.gen_attribute_value(v)
+                                )
+                            })
+                            .join(", ");
+                        format!("{}{} {{ {} }}", module_prefix, name_str, fields_str)
+                    },
+                    PackFields::Positional(positional) => {
+                        let values_str = positional
+                            .iter()
+                            .map(|v| self.gen_attribute_value(v))
+                            .join(", ");
+                        format!("{}{}({})", module_prefix, name_str, values_str)
+                    },
+                }
             },
         }
     }
