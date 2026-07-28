@@ -1,9 +1,9 @@
 
 Diagnostics:
-error: unable to generate test: wrong number of positional fields
+error: unable to generate test: unsupported parameter type
   ┌─ tests/unit_test/test/parametric_enum_rejected.move:8:7
   │
 8 │     #[test(e = Either::Left(1))]
-  │       ^^^^^^^^^^^^^^^^^^^^^^^^^ expected 2 field(s), found 1
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^ enums are not supported as test attribute parameters
 9 │     fun test_enum(e: Either) {
   │                   - corresponding to this parameter
