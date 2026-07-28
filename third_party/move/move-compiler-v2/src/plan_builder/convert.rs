@@ -398,16 +398,38 @@ pub(super) enum ConversionError {
     NotANumber,
     NotAnAddress,
     NotABool,
-    TypeMismatch { declared: Type },
-    OutOfRange { min: BigInt, max: BigInt },
+    TypeMismatch {
+        declared: Type,
+    },
+    OutOfRange {
+        min: BigInt,
+        max: BigInt,
+    },
     UnsupportedParameterType,
     UnknownStruct,
-    EnumNotSupported,
-    StructNotConstructible { struct_id: QualifiedId<StructId> },
-    ConstructorMismatch { expected_positional: bool },
+    VariantOnNonEnum {
+        struct_id: QualifiedId<StructId>,
+        variant: Symbol,
+    },
+    VariantRequired {
+        struct_id: QualifiedId<StructId>,
+    },
+    UnknownVariant {
+        struct_id: QualifiedId<StructId>,
+        variant: Symbol,
+    },
+    StructNotConstructible {
+        struct_id: QualifiedId<StructId>,
+    },
+    ConstructorMismatch {
+        expected_positional: bool,
+    },
     MissingFields(Vec<Symbol>),
     UnknownField(Symbol),
-    FieldCountMismatch { expected: usize, found: usize },
+    FieldCountMismatch {
+        expected: usize,
+        found: usize,
+    },
 }
 
 /// Converts a `#[test(...)]` attribute value into the `MoveValue` a parameter of type `target`
@@ -445,11 +467,12 @@ pub(super) fn to_move_value(
             Ok(MoveValue::Vector(converted))
         },
         (
-            AttributeValue::Pack(_node_id, opt_module, name, opt_type_args, fields),
+            AttributeValue::Pack(_node_id, opt_module, name, variant, opt_type_args, fields),
             Type::Struct(target_mid, target_sid, target_args),
         ) => to_move_struct(
             opt_module,
             *name,
+            variant,
             opt_type_args,
             fields,
             *target_mid,
@@ -471,11 +494,14 @@ pub(super) fn to_move_value(
     }
 }
 
-/// The `Pack` counterpart of `to_move_value`: resolves struct identity, checks visibility and
-/// type-argument agreement, checks field completeness, and recurses per field.
+/// The `Pack` counterpart of `to_move_value`: resolves struct-or-enum identity, checks
+/// visibility and type-argument agreement, checks field completeness, and recurses per field.
+/// `variant` is `Some` for an enum-variant literal (`Enum::Variant(..)`/`Enum::Variant{..}`) and
+/// `None` for a plain struct literal.
 fn to_move_struct(
     opt_module: &Option<ModuleName>,
     name: Symbol,
+    variant: &Option<Symbol>,
     opt_type_args: &Option<Vec<Type>>,
     fields: &PackFields,
     target_mid: ModelModuleId,
@@ -494,13 +520,39 @@ fn to_move_struct(
             declared: Type::Struct(struct_env.module_env.get_id(), struct_env.get_id(), vec![]),
         });
     }
-    // `StructEnv::get_fields()` unions the fields of every variant for an enum (a struct with
-    // `StructLayout::Variants`), so the field-completeness/arity checks below would otherwise
-    // silently accept some enum literals instead of rejecting every one, per CLAUDE.md: enums
-    // are out of scope, `StructLayout::Variants` must never reach that recursion.
-    if struct_env.has_variants() {
-        return Err(ConversionError::EnumNotSupported);
-    }
+
+    // A syntactically valid `Pack` chain can carry a variant independently of whether the
+    // resolved target actually has one, so every combination is handled explicitly rather than
+    // guarding on `has_variants()` alone.
+    let (variant_tag, declared_fields, is_empty) = match (struct_env.has_variants(), variant) {
+        (false, None) => (
+            None,
+            struct_env.get_fields().collect::<Vec<_>>(),
+            struct_env.is_empty_struct(),
+        ),
+        (false, Some(v)) => {
+            return Err(ConversionError::VariantOnNonEnum {
+                struct_id: struct_env.get_qualified_id(),
+                variant: *v,
+            })
+        },
+        (true, None) => {
+            return Err(ConversionError::VariantRequired {
+                struct_id: struct_env.get_qualified_id(),
+            })
+        },
+        (true, Some(v)) => {
+            let idx = struct_env
+                .get_variant_idx(*v)
+                .ok_or(ConversionError::UnknownVariant {
+                    struct_id: struct_env.get_qualified_id(),
+                    variant: *v,
+                })?;
+            let fields: Vec<_> = struct_env.get_fields_of_variant(*v).collect();
+            let is_empty = fields.is_empty();
+            (Some(idx), fields, is_empty)
+        },
+    };
 
     let calling_module_env = env
         .find_module(current_module)
@@ -516,31 +568,34 @@ fn to_move_struct(
         _ => target_args.to_vec(),
     };
 
-    let is_positional_struct = struct_env
-        .get_fields()
-        .next()
+    let is_positional = declared_fields
+        .first()
         .map(|f| f.is_positional())
         .unwrap_or(false);
-    let is_empty = struct_env.is_empty_struct();
+
+    let build = |values: Vec<MoveValue>| match variant_tag {
+        Some(tag) => MoveValue::Struct(MoveStruct::new_variant(tag, values)),
+        None => MoveValue::Struct(MoveStruct::new(values)),
+    };
 
     match fields {
         PackFields::Named(named) => {
             if is_empty && named.is_empty() {
-                return Ok(MoveValue::Struct(MoveStruct::new(vec![MoveValue::Bool(
-                    false,
-                )])));
+                return Ok(match variant_tag {
+                    Some(tag) => MoveValue::Struct(MoveStruct::new_variant(tag, vec![])),
+                    None => MoveValue::Struct(MoveStruct::new(vec![MoveValue::Bool(false)])),
+                });
             }
-            if is_positional_struct {
+            if is_positional {
                 return Err(ConversionError::ConstructorMismatch {
                     expected_positional: true,
                 });
             }
             let by_name: BTreeMap<Symbol, &AttributeValue> =
                 named.iter().map(|(s, v)| (*s, v)).collect();
-            let declared: Vec<_> = struct_env.get_fields().collect();
             let mut missing = Vec::new();
             let mut values = Vec::new();
-            for field in &declared {
+            for field in &declared_fields {
                 match by_name.get(&field.get_name()) {
                     Some(v) => values.push((field, *v)),
                     None => missing.push(field.get_name()),
@@ -550,7 +605,7 @@ fn to_move_struct(
                 return Err(ConversionError::MissingFields(missing));
             }
             let declared_names: std::collections::BTreeSet<Symbol> =
-                declared.iter().map(|f| f.get_name()).collect();
+                declared_fields.iter().map(|f| f.get_name()).collect();
             if let Some((unknown, _)) = named.iter().find(|(s, _)| !declared_names.contains(s)) {
                 return Err(ConversionError::UnknownField(*unknown));
             }
@@ -565,27 +620,27 @@ fn to_move_struct(
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(MoveValue::Struct(MoveStruct::new(converted)))
+            Ok(build(converted))
         },
         PackFields::Positional(positional) => {
             if is_empty && positional.is_empty() {
-                return Ok(MoveValue::Struct(MoveStruct::new(vec![MoveValue::Bool(
-                    false,
-                )])));
+                return Ok(match variant_tag {
+                    Some(tag) => MoveValue::Struct(MoveStruct::new_variant(tag, vec![])),
+                    None => MoveValue::Struct(MoveStruct::new(vec![MoveValue::Bool(false)])),
+                });
             }
-            if !is_positional_struct {
+            if !is_positional {
                 return Err(ConversionError::ConstructorMismatch {
                     expected_positional: false,
                 });
             }
-            let declared: Vec<_> = struct_env.get_fields().collect();
-            if positional.len() != declared.len() {
+            if positional.len() != declared_fields.len() {
                 return Err(ConversionError::FieldCountMismatch {
-                    expected: declared.len(),
+                    expected: declared_fields.len(),
                     found: positional.len(),
                 });
             }
-            let converted = declared
+            let converted = declared_fields
                 .iter()
                 .zip(positional.iter())
                 .map(|(field, v)| {
@@ -597,7 +652,7 @@ fn to_move_struct(
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(MoveValue::Struct(MoveStruct::new(converted)))
+            Ok(build(converted))
         },
     }
 }
