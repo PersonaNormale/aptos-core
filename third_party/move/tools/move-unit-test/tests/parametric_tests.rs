@@ -175,3 +175,25 @@ fn struct_parameter_test_case_actually_executes() {
     let output = run_source(source, None, false);
     assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
 }
+
+#[test]
+fn enum_variant_parameter_test_case_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            enum Either has copy, drop { Left(u8), Right(u8) }
+
+            #[test(e = Either::Left(5))]
+            fun test_either(e: Either) {
+                match (e) {
+                    Either::Left(x) => assert!(x == 5, 0),
+                    Either::Right(_) => assert!(false, 1),
+                }
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}
