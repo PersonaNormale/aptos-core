@@ -15,7 +15,7 @@ use codespan_reporting::diagnostic::Severity;
 use legacy_move_compiler::shared::known_attributes::TestingAttribute;
 use move_core_types::value::MoveValue;
 use move_model::{
-    ast::{Attribute, AttributeValue},
+    ast::{Attribute, AttributeValue, ModuleName},
     model::{FunctionEnv, GlobalEnv, Loc, Parameter},
     symbol::Symbol,
     ty::{PrimitiveType, Type, TypeDisplayContext},
@@ -26,6 +26,7 @@ pub(super) fn build_case_arguments(
     env: &GlobalEnv,
     raw_case: &RawTestCase,
     function: &FunctionEnv,
+    current_module: &ModuleName,
 ) -> Vec<MoveValue> {
     let test_attribute = raw_case.attr;
     let test_attribute_loc = env.get_node_loc(test_attribute.node_id());
@@ -64,7 +65,7 @@ pub(super) fn build_case_arguments(
 
         match test_annotation_params.get(var) {
             Some(value) => match supported_param_type(ty) {
-                Some(target) => match to_move_value(value, &target, env) {
+                Some(target) => match to_move_value(value, &target, current_module, env) {
                     Ok(move_value) => arguments.push(move_value),
                     Err(err) => report_conversion_error(env, &test_attribute_loc, var_loc, err),
                 },
@@ -93,9 +94,11 @@ pub(super) fn build_case_arguments(
 }
 
 /// The `Type` a `#[test(...)]` assignment must be checked against for this declared parameter
-/// type, or `None` if `ty` is not a supported parameter type (a struct or other non-primitive,
-/// non-vector type). Recurses through `Type::Vector` so `vector<vector<u8>>` is supported to
-/// unbounded depth, the same as any other `vector<T>`.
+/// type, or `None` if `ty` is not a supported parameter type. Recurses through `Type::Vector` and
+/// `Type::Struct`'s type arguments so `vector<vector<u8>>` and `Wrapper<Wrapper<u8>>` are both
+/// supported to unbounded depth, the same as any other `vector<T>`/generic struct. Struct field
+/// types are not checked here (that needs `env`, which this function doesn't take); unsupported
+/// field types are rejected later, inside `to_move_value`'s `Pack` arm, per field.
 ///
 /// `&signer` is the only reference type accepted, matching the one special case Move's own test
 /// harness constructs by reference. No other primitive is accepted by reference: `ty` being e.g.
@@ -107,6 +110,10 @@ fn supported_param_type(ty: &Type) -> Option<Type> {
             Some(Type::Primitive(PrimitiveType::Signer))
         },
         Type::Vector(inner) => supported_param_type(inner).map(|t| Type::Vector(Box::new(t))),
+        Type::Struct(mid, sid, args) => {
+            let all_args_supported = args.iter().all(|a| supported_param_type(a).is_some());
+            all_args_supported.then(|| Type::Struct(*mid, *sid, args.clone()))
+        },
         _ => None,
     }
 }
@@ -156,6 +163,53 @@ fn report_conversion_error(
             "test attribute assignments only support `signer`, `address`, `bool`, and integer \
              parameters"
                 .to_string(),
+        ),
+        ConversionError::UnknownStruct => (
+            "unable to generate test: unsupported parameter type",
+            "no struct with this name was found".to_string(),
+        ),
+        ConversionError::StructNotConstructible { struct_id } => {
+            let struct_env = env.get_struct(struct_id);
+            (
+                "unable to generate test: struct not constructible here",
+                format!(
+                    "`{}` can only be constructed within module `{}`",
+                    struct_env.get_full_name_str(),
+                    struct_env.module_env.get_full_name_str()
+                ),
+            )
+        },
+        ConversionError::ConstructorMismatch {
+            expected_positional,
+        } => (
+            "unable to generate test: wrong constructor kind",
+            if expected_positional {
+                "expected a positional constructor `Name(..)`".to_string()
+            } else {
+                "expected a struct constructor `Name { .. }`".to_string()
+            },
+        ),
+        ConversionError::MissingFields(names) => (
+            "unable to generate test: missing struct fields",
+            format!(
+                "missing field(s): {}",
+                names
+                    .iter()
+                    .map(|s| s.display(env.symbol_pool()).to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ),
+        ConversionError::UnknownField(name) => (
+            "unable to generate test: unknown struct field",
+            format!(
+                "no field named `{}` on this struct",
+                name.display(env.symbol_pool())
+            ),
+        ),
+        ConversionError::FieldCountMismatch { expected, found } => (
+            "unable to generate test: wrong number of positional fields",
+            format!("expected {} field(s), found {}", expected, found),
         ),
     };
     env.diag_with_primary_and_labels(Severity::Error, test_attribute_loc, msg, &note, vec![(
@@ -224,7 +278,9 @@ fn parse_test_attribute(
                 return Err(ErrorReported);
             }
             match value {
-                AttributeValue::Value(..) | AttributeValue::Vector(..) => {
+                AttributeValue::Value(..)
+                | AttributeValue::Vector(..)
+                | AttributeValue::Pack(..) => {
                     let mut args = BTreeMap::new();
                     args.insert(*name, value.clone());
                     Ok(args)
