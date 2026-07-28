@@ -25,7 +25,7 @@ pub(super) fn build_test_info(
             .into_iter()
             .next()
             .expect("raw_cases.len() == 1 checked above");
-        let arguments = build_case_arguments(env, &raw_case, &function);
+        let arguments = build_case_arguments(env, &raw_case, &function, current_module);
         let test_case = TestCase {
             function_name: fn_name_str.clone(),
             arguments,
@@ -37,7 +37,7 @@ pub(super) fn build_test_info(
     raw_cases
         .into_iter()
         .map(|raw_case| {
-            let arguments = build_case_arguments(env, &raw_case, &function);
+            let arguments = build_case_arguments(env, &raw_case, &function, current_module);
             let case_name = format!("{}@case{}", fn_name_str, raw_case.index);
             let test_case = TestCase {
                 function_name: fn_name_str.to_string(),

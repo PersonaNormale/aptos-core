@@ -9,13 +9,19 @@
 use super::error::{Checked, ErrorReported};
 use codespan_reporting::diagnostic::Severity;
 use legacy_move_compiler::shared::known_attributes::TestingAttribute;
+use move_binary_format::file_format::Visibility;
 use move_core_types::{
-    account_address::AccountAddress, identifier::Identifier, language_storage::ModuleId,
-    value::MoveValue,
+    account_address::AccountAddress,
+    identifier::Identifier,
+    language_storage::ModuleId,
+    value::{MoveStruct, MoveValue},
 };
 use move_model::{
-    ast::{Address, Attribute, AttributeValue, ModuleName, Value},
-    model::{GlobalEnv, Loc, NodeId},
+    ast::{Address, Attribute, AttributeValue, ModuleName, PackFields, Value},
+    model::{
+        GlobalEnv, Loc, ModuleEnv, ModuleId as ModelModuleId, NodeId, QualifiedId, StructEnv,
+        StructId,
+    },
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
@@ -172,6 +178,14 @@ pub(super) fn resolve_location(env: &GlobalEnv, attr: &Attribute) -> Checked<Mod
             )]);
             Err(ErrorReported)
         },
+        AttributeValue::Pack(id, ..) => {
+            let vloc = env.get_node_loc(id);
+            env.error_with_labels(&loc, "invalid attribute value", vec![(
+                vloc,
+                "expected a module identifier, e.g. `std::vector`".to_string(),
+            )]);
+            Err(ErrorReported)
+        },
     }
 }
 
@@ -201,6 +215,11 @@ pub(super) fn resolve_u64_constant_or_literal(
             env.error(&vloc, "expected a `u64` literal or a `u64` module constant");
             Err(ErrorReported)
         },
+        AttributeValue::Pack(id, ..) => {
+            let vloc = env.get_node_loc(*id);
+            env.error(&vloc, "expected a `u64` literal or a `u64` module constant");
+            Err(ErrorReported)
+        },
     }
 }
 
@@ -213,25 +232,21 @@ fn resolve_named_constant(
     member: Symbol,
     vloc: &Loc,
 ) -> Checked<(ModuleName, Type, Value)> {
-    let module_env = match opt_module_name {
-        Some(module_name) => match env.find_module(module_name) {
-            Some(module_env) => module_env,
-            None => {
-                env.error(
-                    vloc,
-                    &format!(
-                        "cannot find module `{}` in this scope",
-                        module_name.display_full(env)
-                    ),
-                );
-                return Err(ErrorReported);
-            },
+    let module_env = match resolve_module_env(env, current_module, opt_module_name) {
+        Some(module_env) => module_env,
+        None => {
+            let name = opt_module_name.as_ref().unwrap_or(current_module);
+            env.error(
+                vloc,
+                &format!(
+                    "cannot find module `{}` in this scope",
+                    name.display_full(env)
+                ),
+            );
+            return Err(ErrorReported);
         },
-        None => env
-            .find_module(current_module)
-            .expect("current module exists"),
     };
-    let module_name = opt_module_name.as_ref().unwrap_or(current_module).clone();
+    let module_name = module_env.get_name().clone();
     match module_env.find_named_constant(member) {
         Some(named_constant_env) => Ok((
             module_name,
@@ -310,6 +325,23 @@ fn constant_value_to_u64(
     }
 }
 
+/// Resolves an optional explicit module name to the `ModuleEnv` it names, falling back to
+/// `current_module` when `opt_module_name` is `None` (an unqualified reference). Returns `None`
+/// without emitting a diagnostic; callers phrase their own "not found" message, since an
+/// unqualified name failing to resolve and a qualified name failing to resolve want different
+/// wording (`resolve_named_constant`'s "cannot find module" vs. the struct-Pack path's
+/// "undeclared struct").
+pub(super) fn resolve_module_env<'env>(
+    env: &'env GlobalEnv,
+    current_module: &ModuleName,
+    opt_module_name: &Option<ModuleName>,
+) -> Option<ModuleEnv<'env>> {
+    match opt_module_name {
+        Some(module_name) => env.find_module(module_name),
+        None => env.find_module(current_module),
+    }
+}
+
 fn resolve_module_id(env: &GlobalEnv, _vloc: Loc, module: Option<ModuleName>) -> Option<ModuleId> {
     let module_name = module?;
     let addr = module_name.addr();
@@ -369,6 +401,12 @@ pub(super) enum ConversionError {
     TypeMismatch { declared: Type },
     OutOfRange { min: BigInt, max: BigInt },
     UnsupportedParameterType,
+    UnknownStruct,
+    StructNotConstructible { struct_id: QualifiedId<StructId> },
+    ConstructorMismatch { expected_positional: bool },
+    MissingFields(Vec<Symbol>),
+    UnknownField(Symbol),
+    FieldCountMismatch { expected: usize, found: usize },
 }
 
 /// Converts a `#[test(...)]` attribute value into the `MoveValue` a parameter of type `target`
@@ -382,6 +420,7 @@ pub(super) enum ConversionError {
 pub(super) fn to_move_value(
     value: &AttributeValue,
     target: &Type,
+    current_module: &ModuleName,
     env: &GlobalEnv,
 ) -> Result<MoveValue, ConversionError> {
     match (value, target) {
@@ -400,17 +439,195 @@ pub(super) fn to_move_value(
             }
             let converted = elems
                 .iter()
-                .map(|elem| to_move_value(elem, inner, env))
+                .map(|elem| to_move_value(elem, inner, current_module, env))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(MoveValue::Vector(converted))
         },
+        (
+            AttributeValue::Pack(_node_id, opt_module, name, opt_type_args, fields),
+            Type::Struct(target_mid, target_sid, target_args),
+        ) => to_move_struct(
+            opt_module,
+            *name,
+            opt_type_args,
+            fields,
+            *target_mid,
+            *target_sid,
+            target_args,
+            current_module,
+            env,
+        ),
         (AttributeValue::Value(node_id, _), _) => Err(ConversionError::TypeMismatch {
             declared: env.get_node_type(*node_id),
         }),
         (AttributeValue::Vector(node_id, _), _) => Err(ConversionError::TypeMismatch {
             declared: env.get_node_type(*node_id),
         }),
+        (AttributeValue::Pack(node_id, ..), _) => Err(ConversionError::TypeMismatch {
+            declared: env.get_node_type(*node_id),
+        }),
         (AttributeValue::Name(..), _) => Err(ConversionError::UnsupportedParameterType),
+    }
+}
+
+/// The `Pack` counterpart of `to_move_value`: resolves struct identity, checks visibility and
+/// type-argument agreement, checks field completeness, and recurses per field.
+fn to_move_struct(
+    opt_module: &Option<ModuleName>,
+    name: Symbol,
+    opt_type_args: &Option<Vec<Type>>,
+    fields: &PackFields,
+    target_mid: ModelModuleId,
+    target_sid: StructId,
+    target_args: &[Type],
+    current_module: &ModuleName,
+    env: &GlobalEnv,
+) -> Result<MoveValue, ConversionError> {
+    let module_env = resolve_module_env(env, current_module, opt_module)
+        .ok_or(ConversionError::UnknownStruct)?;
+    let struct_env = module_env
+        .find_struct(name)
+        .ok_or(ConversionError::UnknownStruct)?;
+    if (struct_env.module_env.get_id(), struct_env.get_id()) != (target_mid, target_sid) {
+        return Err(ConversionError::TypeMismatch {
+            declared: Type::Struct(struct_env.module_env.get_id(), struct_env.get_id(), vec![]),
+        });
+    }
+
+    let calling_module_env = env
+        .find_module(current_module)
+        .expect("current module exists in the model that is compiling it");
+    check_construction_visibility(env, &struct_env, &calling_module_env)?;
+
+    let effective_args: Vec<Type> = match opt_type_args {
+        Some(explicit) if explicit != target_args => {
+            return Err(ConversionError::TypeMismatch {
+                declared: Type::Struct(target_mid, target_sid, explicit.clone()),
+            });
+        },
+        _ => target_args.to_vec(),
+    };
+
+    let is_positional_struct = struct_env
+        .get_fields()
+        .next()
+        .map(|f| f.is_positional())
+        .unwrap_or(false);
+    let is_empty = struct_env.is_empty_struct();
+
+    match fields {
+        PackFields::Named(named) => {
+            if is_empty && named.is_empty() {
+                return Ok(MoveValue::Struct(MoveStruct::new(vec![MoveValue::Bool(
+                    false,
+                )])));
+            }
+            if is_positional_struct {
+                return Err(ConversionError::ConstructorMismatch {
+                    expected_positional: true,
+                });
+            }
+            let by_name: BTreeMap<Symbol, &AttributeValue> =
+                named.iter().map(|(s, v)| (*s, v)).collect();
+            let declared: Vec<_> = struct_env.get_fields().collect();
+            let mut missing = Vec::new();
+            let mut values = Vec::new();
+            for field in &declared {
+                match by_name.get(&field.get_name()) {
+                    Some(v) => values.push((field, *v)),
+                    None => missing.push(field.get_name()),
+                }
+            }
+            if !missing.is_empty() {
+                return Err(ConversionError::MissingFields(missing));
+            }
+            let declared_names: std::collections::BTreeSet<Symbol> =
+                declared.iter().map(|f| f.get_name()).collect();
+            if let Some((unknown, _)) = named.iter().find(|(s, _)| !declared_names.contains(s)) {
+                return Err(ConversionError::UnknownField(*unknown));
+            }
+            let converted = values
+                .into_iter()
+                .map(|(field, v)| {
+                    to_move_value(
+                        v,
+                        &field.get_type().instantiate(&effective_args),
+                        current_module,
+                        env,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(MoveValue::Struct(MoveStruct::new(converted)))
+        },
+        PackFields::Positional(positional) => {
+            if is_empty && positional.is_empty() {
+                return Ok(MoveValue::Struct(MoveStruct::new(vec![MoveValue::Bool(
+                    false,
+                )])));
+            }
+            if !is_positional_struct {
+                return Err(ConversionError::ConstructorMismatch {
+                    expected_positional: false,
+                });
+            }
+            let declared: Vec<_> = struct_env.get_fields().collect();
+            if positional.len() != declared.len() {
+                return Err(ConversionError::FieldCountMismatch {
+                    expected: declared.len(),
+                    found: positional.len(),
+                });
+            }
+            let converted = declared
+                .iter()
+                .zip(positional.iter())
+                .map(|(field, v)| {
+                    to_move_value(
+                        v,
+                        &field.get_type().instantiate(&effective_args),
+                        current_module,
+                        env,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(MoveValue::Struct(MoveStruct::new(converted)))
+        },
+    }
+}
+
+/// Attribute-driven equivalent of `function_checker.rs::check_struct_op`'s Pack-visibility rule,
+/// re-implemented independently since attribute conversion never builds a real `Exp`/
+/// `Operation::Pack` node for that post-pass to see. Mirrors its exact policy, including the
+/// language-version gate: before `language_version_for_public_struct`, every struct is treated as
+/// `Private` regardless of its declared visibility, so a struct this program can't legally make
+/// `public` yet can't be attribute-constructed across modules either.
+fn check_construction_visibility(
+    env: &GlobalEnv,
+    struct_env: &StructEnv,
+    current_module: &ModuleEnv,
+) -> Result<(), ConversionError> {
+    if struct_env.module_env.get_id() == current_module.get_id() {
+        return Ok(());
+    }
+    let struct_visibility_supported = env.language_version().language_version_for_public_struct();
+    let visibility = if struct_visibility_supported {
+        struct_env.get_visibility()
+    } else {
+        Visibility::Private
+    };
+    let allowed = match visibility {
+        Visibility::Public => true,
+        Visibility::Friend => struct_env.module_env.has_friend(&current_module.get_id()),
+        Visibility::Private => false,
+    };
+    if allowed {
+        Ok(())
+    } else {
+        Err(ConversionError::StructNotConstructible {
+            struct_id: struct_env
+                .module_env
+                .get_id()
+                .qualified(struct_env.get_id()),
+        })
     }
 }
 
