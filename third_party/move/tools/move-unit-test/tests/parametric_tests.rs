@@ -177,6 +177,25 @@ fn struct_parameter_test_case_actually_executes() {
 }
 
 #[test]
+fn phantom_struct_parameter_test_case_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Phantom<phantom T> has copy, drop { val: u8 }
+
+            #[test(p = Phantom<u8> { val: 5 })]
+            fun test_phantom(p: Phantom<u8>) {
+                assert!(p.val == 5, 0);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}
+
+#[test]
 fn enum_variant_parameter_test_case_actually_executes() {
     let source = r#"
         address 0x1 {

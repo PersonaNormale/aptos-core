@@ -675,6 +675,46 @@ fn generic_struct_two_type_parameters_one_used_per_field() {
 }
 
 #[test]
+fn phantom_struct_explicit_type_args_matching_parameter() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Phantom<phantom T> has copy, drop { val: u8 }
+            #[test(p = Phantom<u8> { val: 5 })]
+            fun test_phantom(p: Phantom<u8>) { let _ = p; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_phantom").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(5)]))
+    ]);
+}
+
+#[test]
+fn phantom_struct_type_args_inferred_from_parameter() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Phantom<phantom T> has copy, drop { val: u8 }
+            #[test(p = Phantom { val: 5 })]
+            fun test_phantom(p: Phantom<u8>) { let _ = p; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_phantom").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(5)]))
+    ]);
+}
+
+#[test]
 fn struct_field_containing_a_vector() {
     let source = r#"
         address 0x1 {
