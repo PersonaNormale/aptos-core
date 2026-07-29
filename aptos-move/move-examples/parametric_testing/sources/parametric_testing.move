@@ -7,6 +7,10 @@ module parametric_testing::example {
     use std::signer;
     #[test_only]
     use std::vector;
+    #[test_only]
+    use std::option::{Self, Option};
+    #[test_only]
+    use std::string::{Self, String};
 
     // ---------------------------------------------------------------------------
     // Module logic under test
@@ -480,5 +484,38 @@ module parametric_testing::example {
     #[test(n = Bundle::Holds(Either::Left(1), vector[9, 8]))]
     fun nested_variant_param(n: Bundle) {
         assert!(match (n) { Bundle::Holds(_, tags) => vector::length(&tags) == 2 });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Option and String parameters. Both are recognized by their public constructor
+    // functions, `option::some`/`option::none`/`string::utf8`, in attribute position, rather
+    // than by a field literal: neither type exposes a public field a test attribute could
+    // construct directly.
+    // ---------------------------------------------------------------------------
+
+    #[test(o = option::some(5))]
+    fun option_some_param(o: Option<u8>) {
+        assert!(option::is_some(&o));
+        assert!(*option::borrow(&o) == 5);
+    }
+
+    #[test(o = option::none<u8>())]
+    fun option_none_param(o: Option<u8>) {
+        assert!(option::is_none(&o));
+    }
+
+    #[test(s = string::utf8(vector[104, 105]))]
+    fun string_utf8_param(s: String) {
+        assert!(string::bytes(&s) == &vector[104, 105]);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Nesting: an Option may hold a struct value, converted the same way a struct field
+    // holding a nested value already is.
+    // ---------------------------------------------------------------------------
+
+    #[test(o = option::some(Point { x: 1, y: 2 }))]
+    fun option_of_struct_param(o: Option<Point>) {
+        assert!(option::is_some(&o));
     }
 }
