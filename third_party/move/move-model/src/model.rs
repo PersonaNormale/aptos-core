@@ -4288,6 +4288,10 @@ impl<'env> ModuleEnv<'env> {
     pub fn is_option(&self) -> bool {
         self.is_module_in_std("option")
     }
+
+    pub fn is_string(&self) -> bool {
+        self.is_module_in_std("string")
+    }
 }
 
 // =================================================================================================

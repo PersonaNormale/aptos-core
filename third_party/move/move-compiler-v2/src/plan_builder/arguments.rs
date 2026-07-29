@@ -127,6 +127,24 @@ fn report_conversion_error(
     var_loc: &Loc,
     err: ConversionError,
 ) {
+    // `InvalidUtf8` is the one error that points at its own argument node rather than at the
+    // whole attribute, so it is handled separately instead of threading a per-arm location
+    // through every other case below.
+    if let ConversionError::InvalidUtf8 { node_id } = err {
+        let loc = env.get_node_loc(node_id);
+        env.diag_with_primary_and_labels(
+            Severity::Error,
+            &loc,
+            "unable to generate test: invalid UTF-8",
+            "this byte sequence is not valid UTF-8",
+            vec![(
+                var_loc.clone(),
+                "corresponding to this parameter".to_string(),
+            )],
+        );
+        return;
+    }
+
     let (msg, note) = match err {
         ConversionError::NotANumber => (
             "unable to generate test: unexpected argument type",
@@ -256,6 +274,9 @@ fn report_conversion_error(
             "unable to generate test: wrong number of positional fields",
             format!("expected {} field(s), found {}", expected, found),
         ),
+        ConversionError::InvalidUtf8 { .. } => {
+            unreachable!("InvalidUtf8 is handled by the early return above")
+        },
     };
     env.diag_with_primary_and_labels(Severity::Error, test_attribute_loc, msg, &note, vec![(
         var_loc.clone(),
