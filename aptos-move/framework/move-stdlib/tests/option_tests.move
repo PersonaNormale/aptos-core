@@ -232,4 +232,11 @@ module std::option_tests {
         assert!(n.is_none(), 1);
         assert!(*o.borrow() == 5, 2);
     }
+
+    #[test(o = option::from_vec(vector[5]), n = option::from_vec(vector[]))]
+    fun parametric_from_vec_against_enum_option(o: option::Option<u64>, n: option::Option<u64>) {
+        assert!(o.is_some(), 0);
+        assert!(n.is_none(), 1);
+        assert!(*o.borrow() == 5, 2);
+    }
 }
