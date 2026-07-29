@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: invalid UTF-8
+  ┌─ tests/unit_test/test/parametric_string_utf8_invalid.move:5:29
+  │
+5 │     #[test(s = string::utf8(vector[255]))]
+  │                             ^^^^^^^^^^^ this byte sequence is not valid UTF-8
+6 │     fun invalid_byte(s: String) {
+  │                      - corresponding to this parameter
