@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: option::from_vec argument too long
+   ┌─ tests/unit_test/test/parametric_option_from_vec_too_long.move:15:33
+   │
+15 │     #[test(o = option::from_vec(vector[1, 2, 3]))]
+   │                                 ^^^^^^^^^^^^^^^ a vector converted to `Option` must have 0 or 1 elements
+16 │     fun too_long(o: Option<u8>) {
+   │                  - corresponding to this parameter
