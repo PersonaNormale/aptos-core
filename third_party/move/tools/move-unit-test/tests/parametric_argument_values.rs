@@ -1196,7 +1196,9 @@ fn option_some_converts_to_single_element_vector_layout() {
     let module = plan.module_tests.values().next().unwrap();
 
     assert_eq!(module.tests.get("test_some").unwrap().arguments, vec![
-        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![MoveValue::U8(5)])]))
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![
+            MoveValue::U8(5)
+        ])]))
     ]);
 }
 
@@ -1219,9 +1221,9 @@ fn option_some_struct_element_layout() {
     let module = plan.module_tests.values().next().unwrap();
 
     assert_eq!(module.tests.get("test_some").unwrap().arguments, vec![
-        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![MoveValue::Struct(
-            MoveStruct::new(vec![MoveValue::U8(1)])
-        )])]))
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![
+            MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(1)]))
+        ])]))
     ]);
 }
 

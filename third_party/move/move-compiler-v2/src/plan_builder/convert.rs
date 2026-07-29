@@ -523,8 +523,7 @@ fn to_move_struct(
             let func_env = module_env
                 .find_function(name)
                 .ok_or(ConversionError::UnknownStruct)?;
-            let kind =
-                allowlisted_constructor(&func_env).ok_or(ConversionError::UnknownStruct)?;
+            let kind = allowlisted_constructor(&func_env).ok_or(ConversionError::UnknownStruct)?;
             return build_constructor_call(
                 node_id,
                 &func_env,
@@ -858,7 +857,10 @@ fn build_constructor_call(
             let e = args[0].clone();
             let e_loc = env.get_node_loc(attribute_value_node_id(&e));
             let vec_node = env.new_node(e_loc, Type::Tuple(vec![]));
-            PackFields::Named(vec![(field_name, AttributeValue::Vector(vec_node, vec![e]))])
+            PackFields::Named(vec![(
+                field_name,
+                AttributeValue::Vector(vec_node, vec![e]),
+            )])
         },
         ConstructorKind::StringUtf8 => {
             let field_name = declared_fields[0].get_name();
