@@ -1155,3 +1155,125 @@ fn public_enum_variant_constructible_from_another_module() {
         MoveValue::Struct(MoveStruct::new_variant(0, vec![MoveValue::U8(1)]))
     ]);
 }
+
+#[test]
+fn option_none_converts_to_empty_vector_layout() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            use std::option::{Self, Option};
+            #[test(o = option::none<u8>())]
+            fun test_none(o: Option<u8>) {
+                let _ = o;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_none").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![])]))
+    ]);
+}
+
+#[test]
+fn option_some_converts_to_single_element_vector_layout() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            use std::option::{Self, Option};
+            #[test(o = option::some(5))]
+            fun test_some(o: Option<u8>) {
+                let _ = o;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_some").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![MoveValue::U8(5)])]))
+    ]);
+}
+
+#[test]
+fn option_some_struct_element_layout() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            use std::option::{Self, Option};
+            struct Point has copy, drop { x: u8 }
+            #[test(o = option::some(Point { x: 1 }))]
+            fun test_some(o: Option<Point>) {
+                let _ = o;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_some").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![MoveValue::Struct(
+            MoveStruct::new(vec![MoveValue::U8(1)])
+        )])]))
+    ]);
+}
+
+#[test]
+fn string_utf8_ascii_converts_to_byte_vector_layout() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            use std::string::{Self, String};
+            #[test(s = string::utf8(vector[104, 105]))]
+            fun test_utf8(s: String) {
+                let _ = s;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_utf8").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![
+            MoveValue::U8(104),
+            MoveValue::U8(105),
+        ])]))
+    ]);
+}
+
+#[test]
+fn string_utf8_multi_byte_converts_to_byte_vector_layout() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            use std::string::{Self, String};
+            #[test(s = string::utf8(vector[99, 97, 102, 195, 169]))]
+            fun test_utf8(s: String) {
+                let _ = s;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_utf8").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![
+            MoveValue::U8(99),
+            MoveValue::U8(97),
+            MoveValue::U8(102),
+            MoveValue::U8(195),
+            MoveValue::U8(169),
+        ])]))
+    ]);
+}
