@@ -390,6 +390,25 @@ module parametric_testing::example {
     }
 
     // ---------------------------------------------------------------------------
+    // Phantom type parameter. `T` does not appear in any field, so it carries no
+    // runtime value, but the type argument is still tracked and checked like any
+    // other generic parameter, explicit or inferred from the declared parameter
+    // type.
+    // ---------------------------------------------------------------------------
+
+    struct Phantom<phantom T> has copy, drop { val: u8 }
+
+    #[test(p = Phantom<u8> { val: 5 })]
+    fun explicit_phantom_struct_param(p: Phantom<u8>) {
+        assert!(p.val == 5);
+    }
+
+    #[test(p = Phantom { val: 5 })]
+    fun inferred_phantom_struct_param(p: Phantom<u8>) {
+        assert!(p.val == 5);
+    }
+
+    // ---------------------------------------------------------------------------
     // Nesting: a struct field may be a vector, and a vector element may be a
     // struct, to any depth.
     // ---------------------------------------------------------------------------
