@@ -29,8 +29,10 @@ fn build_test_plan_from_source_no_stdlib(
     let source_path = temp.path().join("argument_values.move");
     fs::write(&source_path, source).unwrap();
 
-    let mut config = UnitTestingConfig::default();
-    config.source_files = vec![source_path.to_string_lossy().into_owned()];
+    let config = UnitTestingConfig {
+        source_files: vec![source_path.to_string_lossy().into_owned()],
+        ..UnitTestingConfig::default()
+    };
     config.build_test_plan()
 }
 
