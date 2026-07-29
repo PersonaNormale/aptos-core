@@ -216,3 +216,25 @@ fn enum_variant_parameter_test_case_actually_executes() {
     let output = run_source(source, None, false);
     assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
 }
+
+#[test]
+fn option_and_string_parameter_test_case_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            use std::option::{Self, Option};
+            use std::string::{Self, String};
+
+            #[test(o = option::some(5), s = string::utf8(vector[104, 105]))]
+            fun test_option_and_string(o: Option<u8>, s: String) {
+                assert!(option::is_some(&o), 0);
+                assert!(*option::borrow(&o) == 5, 1);
+                assert!(string::bytes(&s) == &vector[104, 105], 2);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}
