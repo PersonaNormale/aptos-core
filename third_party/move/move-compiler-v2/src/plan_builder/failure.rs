@@ -6,8 +6,8 @@
 //! Resolves a single `#[expected_failure(...)]` attribute into an `ExpectedFailure`.
 
 use super::{
-    convert::resolve_module_env,
     error::{Checked, ErrorReported},
+    module_lookup::resolve_module_env,
     test_plan::{ExpectedFailure, ExpectedMoveError},
 };
 use codespan_reporting::diagnostic::Severity;

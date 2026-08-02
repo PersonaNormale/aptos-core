@@ -17,13 +17,9 @@ mod collect;
 mod convert;
 mod error;
 mod failure;
+mod module_lookup;
 mod struct_conversion;
 mod test_plan;
-
-pub use test_plan::{
-    ExpectedFailure, ExpectedMoveError, ExpectedMoveErrorDisplay, ModuleTestPlan,
-    NamedOrBytecodeModule, TestCase, TestName, TestPlan,
-};
 
 use crate::options::Options;
 use build::build_test_info;
@@ -35,6 +31,10 @@ use move_model::{
     symbol::Symbol,
 };
 use std::collections::BTreeMap;
+pub use test_plan::{
+    ExpectedFailure, ExpectedMoveError, ExpectedMoveErrorDisplay, ModuleTestPlan,
+    NamedOrBytecodeModule, TestCase, TestName, TestPlan,
+};
 
 /// Constructs a test plan for each module in `env.target`. This also validates the structure of
 /// the attributes as the test plan is constructed.
