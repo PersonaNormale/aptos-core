@@ -12,15 +12,15 @@ use crate::{
 };
 use anyhow::Result;
 use colored::*;
-use legacy_move_compiler::unit_test::{
-    ExpectedFailure, ModuleTestPlan, NamedOrBytecodeModule, TestCase, TestPlan,
-};
 use move_binary_format::{
     access::ModuleAccess,
     errors::{Location, VMResult},
     file_format::{CompiledModule, StructFieldInformation},
 };
 use move_bytecode_utils::Modules;
+use move_compiler_v2::plan_builder::{
+    ExpectedFailure, ModuleTestPlan, NamedOrBytecodeModule, TestCase, TestPlan,
+};
 use move_core_types::{
     account_address::AccountAddress,
     effects::{ChangeSet, Op},

@@ -5,8 +5,9 @@
 
 //! Builds the named `TestCase`s for one function.
 
-use super::{arguments::build_case_arguments, collect::collect_and_validate_test_cases};
-use legacy_move_compiler::unit_test::TestCase;
+use super::{
+    arguments::build_case_arguments, collect::collect_and_validate_test_cases, test_plan::TestCase,
+};
 use move_model::{
     ast::ModuleName,
     model::{FunctionEnv, GlobalEnv},

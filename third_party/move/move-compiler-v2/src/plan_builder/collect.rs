@@ -6,11 +6,9 @@
 //! Groups a function's `#[test]`/`#[expected_failure]` attributes into one `RawTestCase` per
 //! `#[test(...)]` attribute, and validates every cross-case invariant along the way.
 
-use super::failure::parse_failure_attribute;
+use super::{failure::parse_failure_attribute, test_plan::ExpectedFailure};
 use codespan_reporting::diagnostic::Severity;
-use legacy_move_compiler::{
-    shared::known_attributes::TestingAttribute, unit_test::ExpectedFailure,
-};
+use legacy_move_compiler::shared::known_attributes::TestingAttribute;
 use move_model::{
     ast::{Attribute, ModuleName},
     model::{AttributeSiblingId, FunctionEnv, GlobalEnv},

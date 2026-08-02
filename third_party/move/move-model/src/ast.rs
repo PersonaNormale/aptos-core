@@ -168,7 +168,7 @@ pub enum PackFields {
 pub enum AttributeValue {
     Value(NodeId, Value),
     Name(NodeId, Option<ModuleName>, Symbol),
-    Vector(NodeId, Vec<AttributeValue>),
+    Vector(NodeId, Option<Type>, Vec<AttributeValue>),
     Pack(
         NodeId,
         Option<ModuleName>,
@@ -222,6 +222,40 @@ impl Attribute {
                 attribute_sibling_id,
                 ..
             } => *attribute_sibling_id,
+        }
+    }
+
+    /// Builds an `Apply` attribute, minting its `NodeId` from `loc`.
+    pub fn new_apply(
+        env: &GlobalEnv,
+        loc: Loc,
+        attribute_sibling_id: AttributeSiblingId,
+        name: Symbol,
+        attrs: Vec<Attribute>,
+    ) -> Self {
+        let node_id = env.new_node(loc, Type::Tuple(vec![]));
+        Attribute::Apply {
+            attribute_sibling_id,
+            node_id,
+            name,
+            attrs,
+        }
+    }
+
+    /// Builds an `Assign` attribute, minting its `NodeId` from `loc`.
+    pub fn new_assign(
+        env: &GlobalEnv,
+        loc: Loc,
+        attribute_sibling_id: AttributeSiblingId,
+        name: Symbol,
+        value: AttributeValue,
+    ) -> Self {
+        let node_id = env.new_node(loc, Type::Tuple(vec![]));
+        Attribute::Assign {
+            attribute_sibling_id,
+            node_id,
+            name,
+            value,
         }
     }
 }
