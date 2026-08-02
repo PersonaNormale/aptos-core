@@ -8,7 +8,10 @@
 //! `option::some` constructors recognized in place of a field literal, since `Option` is not
 //! declared `public`.
 
-use super::convert::{resolve_module_env, to_move_value, ConversionError};
+use super::{
+    convert::{to_move_value, ConversionError},
+    module_lookup::resolve_module_env,
+};
 use move_binary_format::file_format::{VariantIndex, Visibility};
 use move_core_types::value::{MoveStruct, MoveValue};
 use move_model::{

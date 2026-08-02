@@ -9,28 +9,11 @@
 use move_core_types::{account_address::AccountAddress, value::MoveValue};
 use move_model::{
     ast::{Address, AttributeValue, ModuleName, Value},
-    model::{GlobalEnv, ModuleEnv, NodeId, QualifiedId, StructId},
+    model::{GlobalEnv, NodeId, QualifiedId, StructId},
     symbol::Symbol,
     ty::{PrimitiveType, Type},
 };
 use num::{BigInt, ToPrimitive};
-
-/// Resolves an optional explicit module name to the `ModuleEnv` it names, falling back to
-/// `current_module` when `opt_module_name` is `None` (an unqualified reference). Returns `None`
-/// without emitting a diagnostic; callers phrase their own "not found" message, since an
-/// unqualified name failing to resolve and a qualified name failing to resolve want different
-/// wording (`resolve_named_constant`'s "cannot find module" vs. the struct-Pack path's
-/// "undeclared struct").
-pub(super) fn resolve_module_env<'env>(
-    env: &'env GlobalEnv,
-    current_module: &ModuleName,
-    opt_module_name: &Option<ModuleName>,
-) -> Option<ModuleEnv<'env>> {
-    match opt_module_name {
-        Some(module_name) => env.find_module(module_name),
-        None => env.find_module(current_module),
-    }
-}
 
 /// Why `to_move_value` could not produce a `MoveValue` for a given parameter type. Carries
 /// enough detail for the caller to phrase a specific diagnostic; `to_move_value` and its
