@@ -72,15 +72,6 @@ pub(super) enum ConversionError {
         expected: usize,
         found: usize,
     },
-    InvalidUtf8 {
-        node_id: NodeId,
-    },
-    OptionVecTooLong {
-        node_id: NodeId,
-    },
-    InvalidAscii {
-        node_id: NodeId,
-    },
 }
 
 /// Converts a `#[test(...)]` attribute value into the `MoveValue` a parameter of type `target`
@@ -106,7 +97,7 @@ pub(super) fn to_move_value(
             if let Some(declared) = explicit_ty {
                 if *declared != **inner {
                     return Err(ConversionError::TypeMismatch {
-                        declared: declared.clone(),
+                        declared: Type::Vector(Box::new(declared.clone())),
                     });
                 }
             }

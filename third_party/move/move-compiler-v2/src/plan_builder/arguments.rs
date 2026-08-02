@@ -127,36 +127,6 @@ fn report_conversion_error(
     var_loc: &Loc,
     err: ConversionError,
 ) {
-    // `InvalidUtf8` and `OptionVecTooLong` each point at their own argument node rather than at
-    // the whole attribute, so they are handled together here instead of threading a per-arm
-    // location through every other case below.
-    let node_level = match &err {
-        ConversionError::InvalidUtf8 { node_id } => Some((
-            *node_id,
-            "unable to generate test: invalid UTF-8",
-            "this byte sequence is not valid UTF-8",
-        )),
-        ConversionError::OptionVecTooLong { node_id } => Some((
-            *node_id,
-            "unable to generate test: option::from_vec argument too long",
-            "a vector converted to `Option` must have 0 or 1 elements",
-        )),
-        ConversionError::InvalidAscii { node_id } => Some((
-            *node_id,
-            "unable to generate test: invalid ASCII",
-            "this byte is not a valid ASCII character (must be <= 0x7F)",
-        )),
-        _ => None,
-    };
-    if let Some((node_id, msg, note)) = node_level {
-        let loc = env.get_node_loc(node_id);
-        env.diag_with_primary_and_labels(Severity::Error, &loc, msg, note, vec![(
-            var_loc.clone(),
-            "corresponding to this parameter".to_string(),
-        )]);
-        return;
-    }
-
     let (msg, note) = match err {
         ConversionError::NotANumber => (
             "unable to generate test: unexpected argument type",
@@ -286,11 +256,6 @@ fn report_conversion_error(
             "unable to generate test: wrong number of positional fields",
             format!("expected {} field(s), found {}", expected, found),
         ),
-        ConversionError::InvalidUtf8 { .. }
-        | ConversionError::OptionVecTooLong { .. }
-        | ConversionError::InvalidAscii { .. } => {
-            unreachable!("these are handled by the early return above")
-        },
     };
     env.diag_with_primary_and_labels(Severity::Error, test_attribute_loc, msg, &note, vec![(
         var_loc.clone(),
