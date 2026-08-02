@@ -88,7 +88,7 @@ impl AttributeSiblingIdGenerator {
         Self { next: 0 }
     }
 
-    pub fn next(&mut self) -> AttributeSiblingId {
+    pub fn mint(&mut self) -> AttributeSiblingId {
         let id = AttributeSiblingId::new(self.next);
         self.next = self
             .next

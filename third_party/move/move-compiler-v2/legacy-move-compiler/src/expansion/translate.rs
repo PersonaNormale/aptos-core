@@ -589,10 +589,10 @@ fn flatten_attributes(
     attr_position: AttributePosition,
     attributes: Vec<P::Attributes>,
 ) -> E::Attributes {
-    let mut sibling_ids = AttributeSiblingIdGenerator::new();
+    let mut sibling_ids = E::AttributeSiblingIdGenerator::new();
     let mut all_attrs = vec![];
     for attrs in attributes {
-        let attribute_sibling_id = sibling_ids.next();
+        let attribute_sibling_id = sibling_ids.mint();
         for attr in attrs.value {
             if let Some(attr) = attribute(context, attr_position, attribute_sibling_id, attr) {
                 all_attrs.push(attr);
@@ -600,25 +600,6 @@ fn flatten_attributes(
         }
     }
     unique_attributes(context, attr_position, false, all_attrs, false)
-}
-
-struct AttributeSiblingIdGenerator {
-    next: u16,
-}
-
-impl AttributeSiblingIdGenerator {
-    fn new() -> Self {
-        Self { next: 0 }
-    }
-
-    fn next(&mut self) -> E::AttributeSiblingId {
-        let id = E::AttributeSiblingId::new(self.next);
-        self.next = self
-            .next
-            .checked_add(1)
-            .expect("AttributeSiblingId overflow");
-        id
-    }
 }
 
 fn unique_attributes(
