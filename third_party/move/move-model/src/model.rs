@@ -292,10 +292,8 @@ pub struct SpecVarId(RawIndex);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct NodeId(usize);
 
-/// Identifier shared by sibling attributes (from the same `#[...]` block), relative to an item's
-/// attribute list.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct AttributeSiblingId(u16);
+/// Identifier shared by sibling attributes, relative to an item's attribute list.
+pub use legacy_move_compiler::expansion::ast::AttributeSiblingId;
 
 /// A global id. Instances of this type represent unique identifiers relative to `GlobalEnv`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -406,16 +404,6 @@ impl NodeId {
     }
 
     pub fn as_usize(self) -> usize {
-        self.0
-    }
-}
-
-impl AttributeSiblingId {
-    pub fn new(idx: u16) -> Self {
-        Self(idx)
-    }
-
-    pub fn as_u16(self) -> u16 {
         self.0
     }
 }

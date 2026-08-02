@@ -64,6 +64,7 @@ pub enum Attribute_ {
     Parameterized(Name, Attributes),
 }
 
+/// Identifier shared by sibling attributes, relative to an item's attribute list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AttributeSiblingId(u16);
 
@@ -74,6 +75,32 @@ impl AttributeSiblingId {
 
     pub fn as_u16(self) -> u16 {
         self.0
+    }
+}
+
+/// Mints the `AttributeSiblingId` shared by an item's sibling attributes.
+pub struct AttributeSiblingIdGenerator {
+    next: u16,
+}
+
+impl AttributeSiblingIdGenerator {
+    pub fn new() -> Self {
+        Self { next: 0 }
+    }
+
+    pub fn next(&mut self) -> AttributeSiblingId {
+        let id = AttributeSiblingId::new(self.next);
+        self.next = self
+            .next
+            .checked_add(1)
+            .expect("AttributeSiblingId overflow");
+        id
+    }
+}
+
+impl Default for AttributeSiblingIdGenerator {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

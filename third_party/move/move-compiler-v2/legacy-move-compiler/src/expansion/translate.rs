@@ -722,6 +722,8 @@ fn unique_attributes(
     attrs
 }
 
+/// Whether `unique_attributes` should skip its generic duplicate-attribute rejection
+/// (`Declarations::DuplicateItem`, a `NonblockingError` that drops the repeat) for `name_`.
 fn skip_dedup(name_: &E::AttributeName_, is_test_context: bool) -> bool {
     match name_ {
         E::AttributeName_::Known(KnownAttribute::Testing(
@@ -741,6 +743,9 @@ fn skip_dedup(name_: &E::AttributeName_, is_test_context: bool) -> bool {
         E::AttributeName_::Known(KnownAttribute::Execution(
             ExecutionAttribute::Persistent | ExecutionAttribute::ModuleLock,
         )) => false,
+        // A repeated test parameter name inside a test attribute is not a duplicate attribute in
+        // this generic sense: it gets a `Severity::Warning` and "first assignment wins" instead
+        // of this function's hard error and drop.
         E::AttributeName_::Unknown(_) => is_test_context,
     }
 }

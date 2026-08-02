@@ -18,7 +18,7 @@ const TWO_CASE_SOURCE: &str = r#"
     }
 "#;
 
-fn build_test_plan_from_source(source: &str) -> legacy_move_compiler::unit_test::TestPlan {
+fn build_test_plan_from_source(source: &str) -> move_compiler_v2::plan_builder::TestPlan {
     let temp = tempdir().unwrap();
     let source_path = temp.path().join("case_identity.move");
     fs::write(&source_path, source).unwrap();

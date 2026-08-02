@@ -23,10 +23,9 @@ use crate::{
     intrinsics::process_intrinsic_declaration,
     metadata::lang_feature_versions::LANGUAGE_VERSION_FOR_PUBLIC_STRUCT,
     model::{
-        self, AttributeSiblingId, EqIgnoringLoc, FieldData, FieldId, FunId, FunctionData,
-        FunctionKind, FunctionLoc, Loc, ModuleId, MoveIrLoc, NamedConstantData, NamedConstantId,
-        NodeId, Parameter, SchemaId, SpecFunId, SpecVarId, StructData, StructId, TypeParameter,
-        TypeParameterKind, UserId,
+        self, EqIgnoringLoc, FieldData, FieldId, FunId, FunctionData, FunctionKind, FunctionLoc,
+        Loc, ModuleId, MoveIrLoc, NamedConstantData, NamedConstantId, NodeId, Parameter, SchemaId,
+        SpecFunId, SpecVarId, StructData, StructId, TypeParameter, TypeParameterKind, UserId,
     },
     pragmas::{
         is_pragma_valid_for_block, is_property_valid_for_condition, valid_pragmas_for_block,
@@ -408,38 +407,22 @@ impl ModuleBuilder<'_, '_> {
     }
 
     pub fn translate_attribute(&mut self, attr: &EA::Attribute) -> Attribute {
-        let attribute_sibling_id = AttributeSiblingId::new(attr.attribute_sibling_id.as_u16());
-        let node_id = self
-            .parent
-            .env
-            .new_node(self.parent.to_loc(&attr.loc), Type::Tuple(vec![]));
+        let attribute_sibling_id = attr.attribute_sibling_id;
+        let loc = self.parent.to_loc(&attr.loc);
         match &attr.value {
             EA::Attribute_::Name(n) => {
                 let sym = self.symbol_pool().make(n.value.as_str());
-                Attribute::Apply {
-                    attribute_sibling_id,
-                    node_id,
-                    name: sym,
-                    attrs: vec![],
-                }
+                Attribute::new_apply(self.parent.env, loc, attribute_sibling_id, sym, vec![])
             },
             EA::Attribute_::Parameterized(n, vs) => {
                 let sym = self.symbol_pool().make(n.value.as_str());
-                Attribute::Apply {
-                    attribute_sibling_id,
-                    node_id,
-                    name: sym,
-                    attrs: self.translate_attributes(vs),
-                }
+                let attrs = self.translate_attributes(vs);
+                Attribute::new_apply(self.parent.env, loc, attribute_sibling_id, sym, attrs)
             },
             EA::Attribute_::Assigned(n, v) => {
                 let value = self.translate_attribute_value(v);
-                Attribute::Assign {
-                    attribute_sibling_id,
-                    node_id,
-                    name: self.symbol_pool().make(n.value.as_str()),
-                    value,
-                }
+                let sym = self.symbol_pool().make(n.value.as_str());
+                Attribute::new_assign(self.parent.env, loc, attribute_sibling_id, sym, value)
             },
         }
     }
@@ -531,19 +514,20 @@ impl ModuleBuilder<'_, '_> {
                 },
             },
             EA::AttributeValue_::Vector(explicit_ty, elems) => {
-                if let Some(ty) = explicit_ty {
+                let model_ty_opt = explicit_ty.as_ref().map(|ty| {
                     let mut et = ExpTranslator::new(self);
                     et.set_translate_move_fun();
                     let model_ty = et.translate_type(ty);
                     self.parent
                         .env
-                        .update_node_type(value_node_id, Type::Vector(Box::new(model_ty)));
-                }
+                        .update_node_type(value_node_id, Type::Vector(Box::new(model_ty.clone())));
+                    model_ty
+                });
                 let translated_elems = elems
                     .iter()
                     .map(|e| self.translate_attribute_value(e))
                     .collect();
-                AttributeValue::Vector(value_node_id, translated_elems)
+                AttributeValue::Vector(value_node_id, model_ty_opt, translated_elems)
             },
             EA::AttributeValue_::Pack(macc, opt_tys, pfields) => {
                 let (module_opt, name, variant_opt) = match &macc.value {

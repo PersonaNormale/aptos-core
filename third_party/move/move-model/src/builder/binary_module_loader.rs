@@ -11,15 +11,16 @@ use crate::{
         ResourceSpecifier as ASTResourceSpecifier, Value,
     },
     model::{
-        AttributeSiblingId, FieldData, FieldId, FunId, FunctionData, FunctionKind, GlobalEnv, Loc,
-        ModuleData, ModuleId, MoveIrLoc, Parameter, StructData, StructId, StructVariant,
-        TypeParameter, TypeParameterKind,
+        FieldData, FieldId, FunId, FunctionData, FunctionKind, GlobalEnv, Loc, ModuleData,
+        ModuleId, MoveIrLoc, Parameter, StructData, StructId, StructVariant, TypeParameter,
+        TypeParameterKind,
     },
     symbol::{Symbol, SymbolPool},
     ty::{PrimitiveType, ReferenceKind, Type},
     well_known,
 };
 use itertools::Itertools;
+use legacy_move_compiler::expansion::ast::AttributeSiblingIdGenerator;
 use move_binary_format::{
     access::ModuleAccess,
     file_format::{
@@ -56,25 +57,6 @@ macro_rules! abort_if_missing {
             unimplemented!("[TODO #17414]");
         }
     };
-}
-
-struct AttributeSiblingIdGenerator {
-    next: u16,
-}
-
-impl AttributeSiblingIdGenerator {
-    fn new() -> Self {
-        Self { next: 0 }
-    }
-
-    fn next(&mut self) -> AttributeSiblingId {
-        let id = AttributeSiblingId::new(self.next);
-        self.next = self
-            .next
-            .checked_add(1)
-            .expect("AttributeSiblingId overflow");
-        id
-    }
 }
 
 impl GlobalEnv {
@@ -486,25 +468,17 @@ impl<'a> BinaryModuleLoader<'a> {
         // Helper closure to add an attribute, optionally with a u16 value parameter
         let mut add_attribute = |well_known_name: &str, value: Option<u16>| {
             let attribute_sibling_id = sibling_ids.next();
-            let node_id = self.env.new_node(loc.clone(), Type::Tuple(vec![]));
             let sym = self.env.symbol_pool().make(well_known_name);
-            if let Some(v) = value {
-                let attribute_value =
-                    AttributeValue::Value(node_id, Value::Number(BigInt::from(v)));
-                attributes.push(Attribute::Assign {
-                    attribute_sibling_id,
-                    node_id,
-                    name: sym,
-                    value: attribute_value,
-                });
-            } else {
-                attributes.push(Attribute::Apply {
-                    attribute_sibling_id,
-                    node_id,
-                    name: sym,
-                    attrs: vec![],
-                });
-            }
+            let attribute = match value {
+                Some(v) => {
+                    let value_node_id = self.env.new_node(loc.clone(), Type::Tuple(vec![]));
+                    let attribute_value =
+                        AttributeValue::Value(value_node_id, Value::Number(BigInt::from(v)));
+                    Attribute::new_assign(self.env, loc.clone(), attribute_sibling_id, sym, attribute_value)
+                },
+                None => Attribute::new_apply(self.env, loc.clone(), attribute_sibling_id, sym, vec![]),
+            };
+            attributes.push(attribute);
         };
         for attr in handle_view.attributes() {
             match attr {

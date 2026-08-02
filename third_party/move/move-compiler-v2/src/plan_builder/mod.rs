@@ -17,10 +17,16 @@ mod collect;
 mod convert;
 mod error;
 mod failure;
+mod struct_conversion;
+mod test_plan;
+
+pub use test_plan::{
+    ExpectedFailure, ExpectedMoveError, ExpectedMoveErrorDisplay, ModuleTestPlan,
+    NamedOrBytecodeModule, TestCase, TestName, TestPlan,
+};
 
 use crate::options::Options;
 use build::build_test_info;
-use legacy_move_compiler::unit_test::ModuleTestPlan;
 use move_command_line_common::{address::NumericalAddress, parser::NumberFormat};
 use move_core_types::{account_address::AccountAddress, identifier::Identifier};
 use move_model::{
