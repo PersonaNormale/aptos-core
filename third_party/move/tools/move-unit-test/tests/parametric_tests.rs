@@ -223,12 +223,13 @@ fn option_and_string_parameter_test_case_actually_executes() {
         address 0x1 {
         module M {
             use std::option::{Self, Option};
-            use std::string::{Self, String};
+            use std::string;
 
-            #[test(o = option::some(5), s = string::utf8(vector[104, 105]))]
-            fun test_option_and_string(o: Option<u8>, s: String) {
+            #[test(o = option::some(5), s = b"hi")]
+            fun test_option_and_string(o: Option<u8>, s: vector<u8>) {
                 assert!(option::is_some(&o), 0);
                 assert!(*option::borrow(&o) == 5, 1);
+                let s = string::utf8(s);
                 assert!(string::bytes(&s) == &vector[104, 105], 2);
             }
         }

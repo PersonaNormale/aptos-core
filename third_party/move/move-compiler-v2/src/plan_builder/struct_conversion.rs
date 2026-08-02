@@ -4,9 +4,9 @@
 // All Aptos Foundation code and content is licensed pursuant to the Innovation-Enabling Source Code License, available at https://github.com/aptos-labs/aptos-core/blob/main/LICENSE
 
 //! Converts a `#[test(...)]`/`#[expected_failure(...)]` struct- or enum-variant-literal payload
-//! (`AttributeValue::Pack`) into a `MoveValue`, including the allowlisted `Option`/`String`/
-//! `ascii` stdlib constructors recognized in place of a field literal, since none of those types
-//! exposes a public field to construct directly.
+//! (`AttributeValue::Pack`) into a `MoveValue`, including the allowlisted `option::none`/
+//! `option::some` constructors recognized in place of a field literal, since `Option` is not
+//! declared `public`.
 
 use super::convert::{resolve_module_env, to_move_value, ConversionError};
 use move_binary_format::file_format::{VariantIndex, Visibility};
@@ -14,8 +14,7 @@ use move_core_types::value::{MoveStruct, MoveValue};
 use move_model::{
     ast::{AttributeValue, ModuleName, PackFields},
     model::{
-        FieldEnv, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId as ModelModuleId, NodeId,
-        StructEnv, StructId,
+        FieldEnv, FunctionEnv, GlobalEnv, ModuleEnv, ModuleId as ModelModuleId, StructEnv, StructId,
     },
     symbol::Symbol,
     ty::Type,
@@ -233,37 +232,12 @@ fn build_struct_or_variant_value(
     }
 }
 
-/// The `Option`/`String`/`ascii` functions recognized in attribute-call position, in place of a
-/// field literal, since none of these types exposes a public field to construct directly.
+/// The `Option` functions recognized in attribute-call position, in place of a field literal,
+/// since `Option` is not declared `public`.
 #[derive(Clone, Copy)]
 enum ConstructorKind {
     OptionNone,
     OptionSome,
-    OptionFromVec,
-    StringUtf8,
-    StringTryUtf8,
-    AsciiString,
-    AsciiTryString,
-    AsciiChar,
-}
-
-/// The three stdlib modules whose constructors `allowlisted_constructor` recognizes.
-enum StdModule {
-    Option,
-    String,
-    Ascii,
-}
-
-fn stdmodule(module_env: &ModuleEnv) -> Option<StdModule> {
-    if module_env.is_option() {
-        Some(StdModule::Option)
-    } else if module_env.is_string() {
-        Some(StdModule::String)
-    } else if module_env.is_ascii() {
-        Some(StdModule::Ascii)
-    } else {
-        None
-    }
 }
 
 /// Whether `func_env` is one of the allowlisted constructors, checked by module and function
@@ -271,103 +245,19 @@ fn stdmodule(module_env: &ModuleEnv) -> Option<StdModule> {
 /// already failed to resolve as a struct, so there is no struct/enum to identity-check against
 /// yet.
 fn allowlisted_constructor(func_env: &FunctionEnv) -> Option<ConstructorKind> {
-    match (
-        stdmodule(&func_env.module_env)?,
-        func_env.get_name_str().as_str(),
-    ) {
-        (StdModule::Option, "none") => Some(ConstructorKind::OptionNone),
-        (StdModule::Option, "some") => Some(ConstructorKind::OptionSome),
-        (StdModule::Option, "from_vec") => Some(ConstructorKind::OptionFromVec),
-        (StdModule::String, "utf8") => Some(ConstructorKind::StringUtf8),
-        (StdModule::String, "try_utf8") => Some(ConstructorKind::StringTryUtf8),
-        (StdModule::Ascii, "string") => Some(ConstructorKind::AsciiString),
-        (StdModule::Ascii, "try_string") => Some(ConstructorKind::AsciiTryString),
-        (StdModule::Ascii, "char") => Some(ConstructorKind::AsciiChar),
+    if !func_env.module_env.is_option() {
+        return None;
+    }
+    match func_env.get_name_str().as_str() {
+        "none" => Some(ConstructorKind::OptionNone),
+        "some" => Some(ConstructorKind::OptionSome),
         _ => None,
     }
 }
 
-/// Every `AttributeValue` variant carries its own `NodeId` as its first field; this reads it
-/// back generically, for use as a `Loc` source when minting a synthetic node.
-fn attribute_value_node_id(value: &AttributeValue) -> NodeId {
-    match value {
-        AttributeValue::Value(id, _)
-        | AttributeValue::Name(id, ..)
-        | AttributeValue::Vector(id, ..)
-        | AttributeValue::Pack(id, ..) => *id,
-    }
-}
-
-/// Reads a single-vector-field struct's (`String`, `ascii::String`) backing bytes back out of
-/// its `MoveValue::Struct`, so the constructor that built it can run the same validity check its
-/// native body performs at runtime, at compile time instead.
-fn bytes_from_single_vector_field(value: &MoveValue) -> Vec<u8> {
-    let MoveValue::Struct(s) = value else {
-        unreachable!("string::utf8 always builds a MoveValue::Struct")
-    };
-    let (_, fields) = s.optional_variant_and_fields();
-    let MoveValue::Vector(byte_values) = &fields[0] else {
-        unreachable!("String's one field is always a vector<u8>")
-    };
-    byte_values
-        .iter()
-        .map(|v| match v {
-            MoveValue::U8(b) => *b,
-            _ => unreachable!("vector<u8> elements are always MoveValue::U8"),
-        })
-        .collect()
-}
-
-/// `ascii::is_valid_char`'s predicate (`ascii.move:139-141`), reused at compile time so
-/// `ascii::string`/`ascii::try_string`/`ascii::char` can validate their bytes the same way their
-/// native bodies do at runtime.
-fn is_valid_ascii_byte(b: u8) -> bool {
-    b <= 0x7F
-}
-
-/// Reads `ascii::Char`'s single scalar `byte` field back out of its `MoveValue::Struct`, the
-/// scalar counterpart of `bytes_from_single_vector_field`.
-fn byte_from_single_scalar_field(value: &MoveValue) -> u8 {
-    let MoveValue::Struct(s) = value else {
-        unreachable!("a single-scalar-field struct constructor always builds a MoveValue::Struct")
-    };
-    let (_, fields) = s.optional_variant_and_fields();
-    match &fields[0] {
-        MoveValue::U8(b) => *b,
-        _ => unreachable!("ascii::Char's one field is always a u8"),
-    }
-}
-
-/// Builds a single-field, never-enum-declared struct (`String`, `ascii::String`, `ascii::Char`)
-/// from one already-parsed constructor argument, reusing the ordinary field-conversion path an
-/// equivalent hand-written struct literal would go through.
-fn build_single_field_struct(
-    struct_env: &StructEnv,
-    arg: AttributeValue,
-    current_module: &ModuleName,
-    env: &GlobalEnv,
-) -> Result<MoveValue, ConversionError> {
-    let declared_fields: Vec<_> = struct_env.get_fields().collect();
-    let field_name = declared_fields[0].get_name();
-    build_struct_or_variant_value(
-        None,
-        declared_fields,
-        false,
-        &PackFields::Named(vec![(field_name, arg)]),
-        &None,
-        struct_env.module_env.get_id(),
-        struct_env.get_id(),
-        &[],
-        current_module,
-        env,
-    )
-}
-
-/// Builds an `Option` value directly from an already-converted payload. Used by every
-/// allowlisted constructor that produces an `Option`: `option::none`/`option::some` know their
-/// variant from the constructor name alone; `option::from_vec`/`string::try_utf8`/
-/// `ascii::try_string` (Layer 8) decide `Some` vs `None` from data the call itself carries.
-/// Handles both the framework's enum-declared `Option` and the legacy struct-declared copy.
+/// Builds an `Option` value directly from an already-converted payload. `option::none`/
+/// `option::some` know their variant from the constructor name alone. Handles both the
+/// framework's enum-declared `Option` and the legacy struct-declared copy.
 fn wrap_in_option(struct_env: &StructEnv, payload: Option<MoveValue>) -> MoveValue {
     if struct_env.has_variants() {
         let (name, values) = match payload {
@@ -384,10 +274,10 @@ fn wrap_in_option(struct_env: &StructEnv, payload: Option<MoveValue>) -> MoveVal
     }
 }
 
-/// Lowers a call to an allowlisted `Option`/`String` constructor into the `MoveValue` a
-/// hand-written literal for that constructor would need, reading the real field layout off the
-/// resolved function's own return type so the result stays correct whether `Option` is declared
-/// as the legacy `vec`-field struct or the current enum.
+/// Lowers a call to an allowlisted `Option` constructor into the `MoveValue` a hand-written
+/// literal for that constructor would need, reading the real field layout off the resolved
+/// function's own return type so the result stays correct whether `Option` is declared as the
+/// legacy `vec`-field struct or the current enum.
 fn build_constructor_call(
     func_env: &FunctionEnv,
     kind: ConstructorKind,
@@ -422,13 +312,7 @@ fn build_constructor_call(
     };
     let expected_arity = match kind {
         ConstructorKind::OptionNone => 0,
-        ConstructorKind::OptionSome
-        | ConstructorKind::OptionFromVec
-        | ConstructorKind::StringUtf8
-        | ConstructorKind::StringTryUtf8
-        | ConstructorKind::AsciiString
-        | ConstructorKind::AsciiTryString
-        | ConstructorKind::AsciiChar => 1,
+        ConstructorKind::OptionSome => 1,
     };
     if args.len() != expected_arity {
         return Err(ConversionError::FieldCountMismatch {
@@ -438,102 +322,11 @@ fn build_constructor_call(
     }
 
     let struct_env = env.get_struct(mid.qualified(sid));
-
     match kind {
         ConstructorKind::OptionNone => Ok(wrap_in_option(&struct_env, None)),
         ConstructorKind::OptionSome => {
             let e = to_move_value(&args[0], &target_args[0], current_module, env)?;
             Ok(wrap_in_option(&struct_env, Some(e)))
-        },
-        ConstructorKind::StringUtf8 => {
-            let value =
-                build_single_field_struct(&struct_env, args[0].clone(), current_module, env)?;
-            let bytes = bytes_from_single_vector_field(&value);
-            if std::str::from_utf8(&bytes).is_err() {
-                return Err(ConversionError::InvalidUtf8 {
-                    node_id: attribute_value_node_id(&args[0]),
-                });
-            }
-            Ok(value)
-        },
-        ConstructorKind::OptionFromVec => {
-            let AttributeValue::Vector(vec_node_id, _, elems) = &args[0] else {
-                return Err(ConversionError::TypeMismatch {
-                    declared: env.get_node_type(attribute_value_node_id(&args[0])),
-                });
-            };
-            match elems.len() {
-                0 => Ok(wrap_in_option(&struct_env, None)),
-                1 => {
-                    let e = to_move_value(&elems[0], &target_args[0], current_module, env)?;
-                    Ok(wrap_in_option(&struct_env, Some(e)))
-                },
-                _ => Err(ConversionError::OptionVecTooLong {
-                    node_id: *vec_node_id,
-                }),
-            }
-        },
-        ConstructorKind::StringTryUtf8 => {
-            let string_name = env.symbol_pool().make("String");
-            let string_struct_env = func_env
-                .module_env
-                .find_struct(string_name)
-                .expect("std::string declares String alongside try_utf8");
-            let value = build_single_field_struct(
-                &string_struct_env,
-                args[0].clone(),
-                current_module,
-                env,
-            )?;
-            let bytes = bytes_from_single_vector_field(&value);
-            let payload = if std::str::from_utf8(&bytes).is_ok() {
-                Some(value)
-            } else {
-                None
-            };
-            Ok(wrap_in_option(&struct_env, payload))
-        },
-        ConstructorKind::AsciiString => {
-            let value =
-                build_single_field_struct(&struct_env, args[0].clone(), current_module, env)?;
-            let bytes = bytes_from_single_vector_field(&value);
-            if bytes.iter().any(|b| !is_valid_ascii_byte(*b)) {
-                return Err(ConversionError::InvalidAscii {
-                    node_id: attribute_value_node_id(&args[0]),
-                });
-            }
-            Ok(value)
-        },
-        ConstructorKind::AsciiTryString => {
-            let string_name = env.symbol_pool().make("String");
-            let ascii_string_struct_env = func_env
-                .module_env
-                .find_struct(string_name)
-                .expect("std::ascii declares String alongside try_string");
-            let value = build_single_field_struct(
-                &ascii_string_struct_env,
-                args[0].clone(),
-                current_module,
-                env,
-            )?;
-            let bytes = bytes_from_single_vector_field(&value);
-            let payload = if bytes.iter().all(|b| is_valid_ascii_byte(*b)) {
-                Some(value)
-            } else {
-                None
-            };
-            Ok(wrap_in_option(&struct_env, payload))
-        },
-        ConstructorKind::AsciiChar => {
-            let value =
-                build_single_field_struct(&struct_env, args[0].clone(), current_module, env)?;
-            let byte = byte_from_single_scalar_field(&value);
-            if !is_valid_ascii_byte(byte) {
-                return Err(ConversionError::InvalidAscii {
-                    node_id: attribute_value_node_id(&args[0]),
-                });
-            }
-            Ok(value)
         },
     }
 }
