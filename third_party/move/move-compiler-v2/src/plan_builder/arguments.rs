@@ -145,8 +145,7 @@ fn report_conversion_error(
             (
                 "unable to generate test: mismatched types",
                 format!(
-                    "attribute value is explicitly typed `{}`, which disagrees with this \
-                     parameter",
+                    "attribute value has type `{}`, which disagrees with this parameter",
                     declared.display(&ctx)
                 ),
             )
@@ -167,6 +166,24 @@ fn report_conversion_error(
         ConversionError::UnknownStruct => (
             "unable to generate test: unsupported parameter type",
             "no struct with this name was found".to_string(),
+        ),
+        ConversionError::UnknownModule { module } => (
+            "unable to generate test: unknown module",
+            format!("no module named `{}` found", module.display_full(env)),
+        ),
+        ConversionError::UnknownConstant { opt_module, name } => (
+            "unable to generate test: unknown constant",
+            match opt_module {
+                Some(m) => format!(
+                    "no constant named `{}` found in module `{}`",
+                    name.display(env.symbol_pool()),
+                    m.display_full(env)
+                ),
+                None => format!(
+                    "no constant named `{}` found",
+                    name.display(env.symbol_pool())
+                ),
+            },
         ),
         ConversionError::VariantOnNonEnum { struct_id, variant } => {
             let struct_env = env.get_struct(struct_id);
@@ -322,23 +339,9 @@ fn parse_test_attribute(
                 env.error(&loc, "unexpected nested attribute in test declaration");
                 return Err(ErrorReported);
             }
-            match value {
-                AttributeValue::Value(..)
-                | AttributeValue::Vector(..)
-                | AttributeValue::Pack(..) => {
-                    let mut args = BTreeMap::new();
-                    args.insert(*name, value.clone());
-                    Ok(args)
-                },
-                AttributeValue::Name(..) => {
-                    let loc = env.get_node_loc(*node_id);
-                    env.error_with_labels(&loc, "unsupported attribute value", vec![(
-                        loc.clone(),
-                        "assigned in this attribute".to_string(),
-                    )]);
-                    Err(ErrorReported)
-                },
-            }
+            let mut args = BTreeMap::new();
+            args.insert(*name, value.clone());
+            Ok(args)
         },
     }
 }
