@@ -206,6 +206,14 @@ impl Attribute {
         attrs.iter().any(pred)
     }
 
+    /// True if this is an `Apply` attribute whose name equals `target`.
+    pub fn is_apply_named(&self, pool: &SymbolPool, target: &str) -> bool {
+        match self {
+            Attribute::Apply { name, .. } => pool.string(*name).as_str() == target,
+            Attribute::Assign { .. } => false,
+        }
+    }
+
     pub fn node_id(&self) -> NodeId {
         match self {
             Attribute::Assign { node_id, .. } | Attribute::Apply { node_id, .. } => *node_id,
