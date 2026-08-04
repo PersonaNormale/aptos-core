@@ -1,9 +1,9 @@
 
 Diagnostics:
-error: unable to generate test: mismatched types
-  ┌─ tests/unit_test/test/parametric_i256_out_of_range_above.move:5:7
+error: unable to generate test: literal out of range
+  ┌─ tests/unit_test/test/parametric_i256_out_of_range_above.move:4:7
   │
-5 │     #[test(x = 57896044618658097711785492504343953926634992332820282019728792003956564819968)]
-  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ attribute value is explicitly typed `u256`, which disagrees with this parameter
-6 │     fun out_of_range(x: i256) {
+4 │     #[test(x = 57896044618658097711785492504343953926634992332820282019728792003956564819968)]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ value must be between `-57896044618658097711785492504343953926634992332820282019728792003956564819968` and `57896044618658097711785492504343953926634992332820282019728792003956564819967` for this parameter
+5 │     fun out_of_range(x: i256) {
   │                      - corresponding to this parameter

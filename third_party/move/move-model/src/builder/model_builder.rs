@@ -593,6 +593,27 @@ impl<'env> ModelBuilder<'env> {
         self.const_table.insert(name, entry);
     }
 
+    /// Populates `GlobalEnv::builtin_constants` from `self.const_table`'s builtin range
+    /// constants (`MAX_U8`..`MAX_I256`, `MIN_I8`..`MIN_I256`, see `builtins::declare_builtins`),
+    /// so `GlobalEnv::find_builtin_constant` can see them; until this runs they exist only in
+    /// `self.const_table`, a builder-phase-only field. Must run after `populate_env()`, and at
+    /// most once per `GlobalEnv`: the assert below guards against a second call silently
+    /// re-deriving the same map from a `const_table` that may since have been mutated further.
+    pub fn register_builtin_constants(&mut self) {
+        assert!(
+            self.env.builtin_constants.borrow().is_empty(),
+            "register_builtin_constants must not run more than once per GlobalEnv"
+        );
+        let builtin_module_name = self.builtin_module();
+        let builtin_constants: BTreeMap<Symbol, (Value, Type)> = self
+            .const_table
+            .iter()
+            .filter(|(sym, _)| sym.module_name == builtin_module_name)
+            .map(|(sym, entry)| (sym.symbol, (entry.value.clone(), entry.ty.clone())))
+            .collect();
+        *self.env.builtin_constants.borrow_mut() = builtin_constants;
+    }
+
     /// Injects a `const$<NAME>` accessor function for every non-private constant in every module.
     /// Must run after `populate_env()` and before `add_friend_decl_for_package_visibility()`.
     pub fn inject_const_accessor_functions(&mut self) {
