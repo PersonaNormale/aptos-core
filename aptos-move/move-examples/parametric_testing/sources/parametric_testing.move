@@ -1,3 +1,11 @@
+#[test_only]
+/// Constants referenced from `example` to demonstrate cross-module named-constant
+/// resolution in `#[test(...)]` attributes.
+module parametric_testing::limits {
+    public const LIMIT: u32 = 42;
+    const EINVALID_STATE: u64 = 1;
+}
+
 /// Parametric test.
 ///
 /// Each #[test(...)] attribute is an independent test invocation of the same function.
@@ -9,6 +17,8 @@ module parametric_testing::example {
     use std::vector;
     #[test_only]
     use std::option::{Self, Option};
+    #[test_only]
+    use parametric_testing::limits;
 
     // ---------------------------------------------------------------------------
     // Module logic under test
@@ -526,5 +536,78 @@ module parametric_testing::example {
     #[test(xs = x"6869")]
     fun hex_string_literal_param(xs: vector<u8>) {
         assert!(vector::length(&xs) == 2);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Named constant. A test attribute value may reference the current module's own
+    // `const`, instead of only literals.
+    // ---------------------------------------------------------------------------
+
+    const BIG: u64 = 1000;
+
+    #[test(x = BIG)]
+    fun same_module_named_constant_param(x: u64) {
+        assert!(x == 1000);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Builtin range constant. MAX_U8..MAX_I256/MIN_I8..MIN_I256 are always available,
+    // with no declaration needed, so a boundary test can read `MAX_U8` instead of
+    // `255u8`.
+    // ---------------------------------------------------------------------------
+
+    #[test(x = MAX_U8)]
+    fun builtin_max_u8_param(x: u8) {
+        assert!(x == 255);
+    }
+
+    #[test(x = MIN_I64)]
+    fun builtin_min_i64_param(x: i64) {
+        assert!(x == -9223372036854775808);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Cross-module named constant. A qualified reference resolves in the named
+    // module; a public constant and a private one are both readable, since a
+    // const's value carries no invariant to protect the way a struct's
+    // construction does.
+    // ---------------------------------------------------------------------------
+
+    #[test(x = limits::LIMIT)]
+    fun cross_module_public_named_constant_param(x: u32) {
+        assert!(x == 42);
+    }
+
+    #[test(x = parametric_testing::limits::EINVALID_STATE)]
+    fun cross_module_private_named_constant_param(x: u64) {
+        assert!(x == 1);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Nested inside vector. A named constant reference is resolved the same way
+    // whether it appears at the top level or nested inside a vector[...] literal.
+    // ---------------------------------------------------------------------------
+
+    #[test(xs = vector[BIG, BIG])]
+    fun nested_in_vector_named_constant_param(xs: vector<u64>) {
+        assert!(vector::length(&xs) == 2);
+        assert!(*vector::borrow(&xs, 0) == 1000);
+    }
+}
+
+#[test_only]
+/// Shadowing demo, kept in its own module so its `MAX_U8` doesn't collide with `example`'s.
+module parametric_testing::shadowing_example {
+    // ---------------------------------------------------------------------------
+    // Shadowing. An unqualified name tries the current module's own constant
+    // first, falling back to the builtin only if the current module doesn't
+    // declare it.
+    // ---------------------------------------------------------------------------
+
+    const MAX_U8: bool = false;
+
+    #[test(x = MAX_U8)]
+    fun shadowing_local_constant_wins_over_builtin_param(x: bool) {
+        assert!(!x);
     }
 }
