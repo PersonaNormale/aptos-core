@@ -1,11 +1,9 @@
 
 Diagnostics:
-error: invalid usage of known attribute
-  ┌─ tests/unit_test/test/test_and_test_only_annotation.move:6:16
+error: `#[test_only]` cannot be combined with `#[test(...)]` on the same function
+  ┌─ tests/unit_test/test/test_and_test_only_annotation.move:5:7
   │
 4 │     #[test(_a=@0x1, _b=@0x2)]
-  │       ---------------------- Previously annotated here
+  │       ---------------------- previously annotated here
 5 │     #[test_only]
-  │       --------- Function annotated as both #[test(...)] and #[test_only]. You need to declare it as either one or the other
-6 │     public fun boo(_a: signer, _b: signer) { }
-  │                ^^^
+  │       ^^^^^^^^^ conflicts with the `#[test(...)]` annotation

@@ -23,9 +23,10 @@ use crate::{
     intrinsics::process_intrinsic_declaration,
     metadata::lang_feature_versions::LANGUAGE_VERSION_FOR_PUBLIC_STRUCT,
     model::{
-        self, EqIgnoringLoc, FieldData, FieldId, FunId, FunctionData, FunctionKind, FunctionLoc,
-        Loc, ModuleId, MoveIrLoc, NamedConstantData, NamedConstantId, NodeId, Parameter, SchemaId,
-        SpecFunId, SpecVarId, StructData, StructId, TypeParameter, TypeParameterKind, UserId,
+        self, AttributeSiblingId, EqIgnoringLoc, FieldData, FieldId, FunId, FunctionData,
+        FunctionKind, FunctionLoc, Loc, ModuleId, MoveIrLoc, NamedConstantData, NamedConstantId,
+        NodeId, Parameter, SchemaId, SpecFunId, SpecVarId, StructData, StructId, TypeParameter,
+        TypeParameterKind, UserId,
     },
     pragmas::{
         is_pragma_valid_for_block, is_property_valid_for_condition, valid_pragmas_for_block,
@@ -402,11 +403,12 @@ impl ModuleBuilder<'_, '_> {
     pub fn translate_attributes(&mut self, attrs: &EA::Attributes) -> Vec<Attribute> {
         attrs
             .iter()
-            .map(|(_, _, attr)| self.translate_attribute(attr))
+            .map(|attr| self.translate_attribute(attr))
             .collect()
     }
 
     pub fn translate_attribute(&mut self, attr: &EA::Attribute) -> Attribute {
+        let attribute_sibling_id = AttributeSiblingId::new(attr.attribute_sibling_id.as_u16());
         let node_id = self
             .parent
             .env
@@ -414,11 +416,21 @@ impl ModuleBuilder<'_, '_> {
         match &attr.value {
             EA::Attribute_::Name(n) => {
                 let sym = self.symbol_pool().make(n.value.as_str());
-                Attribute::Apply(node_id, sym, vec![])
+                Attribute::Apply {
+                    attribute_sibling_id,
+                    node_id,
+                    name: sym,
+                    attrs: vec![],
+                }
             },
             EA::Attribute_::Parameterized(n, vs) => {
                 let sym = self.symbol_pool().make(n.value.as_str());
-                Attribute::Apply(node_id, sym, self.translate_attributes(vs))
+                Attribute::Apply {
+                    attribute_sibling_id,
+                    node_id,
+                    name: sym,
+                    attrs: self.translate_attributes(vs),
+                }
             },
             EA::Attribute_::Assigned(n, v) => {
                 let value_node_id = self
@@ -479,7 +491,12 @@ impl ModuleBuilder<'_, '_> {
                         },
                     },
                 };
-                Attribute::Assign(node_id, self.symbol_pool().make(n.value.as_str()), v)
+                Attribute::Assign {
+                    attribute_sibling_id,
+                    node_id,
+                    name: self.symbol_pool().make(n.value.as_str()),
+                    value: v,
+                }
             },
         }
     }

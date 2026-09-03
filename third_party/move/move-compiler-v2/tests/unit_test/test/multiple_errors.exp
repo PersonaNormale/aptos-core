@@ -1,17 +1,48 @@
 
 Diagnostics:
-error: duplicate declaration, item, or annotation
-   ┌─ tests/unit_test/test/multiple_errors.move:27:7
+error: unsupported attribute value
+   ┌─ tests/unit_test/test/multiple_errors.move:19:12
+   │
+19 │     #[test(_a=Foo)]
+   │            ^^^^^^
+   │            │
+   │            assigned in this attribute
+
+error: unable to generate test: missing parameter assignment
+   ┌─ tests/unit_test/test/multiple_errors.move:26:7
    │
 26 │     #[test(_a=@0x1)]
-   │       ---- Attribute previously given here
+   │       ^^^^^^^^^^^^^ expected a parameter to be assigned in this attribute
 27 │     #[test(_b=@0x2)]
-   │       ^^^^^^^^^^^^^ Duplicate attribute 'test' attached to the same item
+28 │     public fun d(_a: signer, _b: signer) { }
+   │                              -- corresponding to this parameter
 
-error: duplicate declaration, item, or annotation
+error: unable to generate test: missing parameter assignment
+   ┌─ tests/unit_test/test/multiple_errors.move:27:7
+   │
+27 │     #[test(_b=@0x2)]
+   │       ^^^^^^^^^^^^^ expected a parameter to be assigned in this attribute
+28 │     public fun d(_a: signer, _b: signer) { }
+   │                  -- corresponding to this parameter
+
+error: `#[test_only]` cannot be combined with `#[test(...)]` on the same function
+   ┌─ tests/unit_test/test/multiple_errors.move:32:7
+   │
+31 │     #[test(_a=@0x1)]
+   │       ------------- previously annotated here
+32 │     #[test_only]
+   │       ^^^^^^^^^ conflicts with the `#[test(...)]` annotation
+
+error: unable to generate test: missing parameter assignment
+   ┌─ tests/unit_test/test/multiple_errors.move:36:7
+   │
+36 │     #[test(_a=@0x1)]
+   │       ^^^^^^^^^^^^^ expected a parameter to be assigned in this attribute
+37 │     public fun f(_a: signer, _b: signer) { }
+   │                              -- corresponding to this parameter
+
+error: a single case test function may only have one `#[expected_failure]`
    ┌─ tests/unit_test/test/multiple_errors.move:42:7
    │
-41 │     #[expected_failure]
-   │       ---------------- Attribute previously given here
 42 │     #[expected_failure]
-   │       ^^^^^^^^^^^^^^^^ Duplicate attribute 'expected_failure' attached to the same item
+   │       ^^^^^^^^^^^^^^^^ second occurrence here
