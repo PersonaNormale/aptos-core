@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: unexpected argument type
+  ┌─ tests/unit_test/test/parametric_address_literal_for_number_parameter.move:4:7
+  │
+4 │     #[test(x = @0x1)]
+  │       ^^^^^^^^^^^^^^ expected an unsigned integer literal
+5 │     fun address_for_number(x: u8) {
+  │                            - corresponding to this parameter
