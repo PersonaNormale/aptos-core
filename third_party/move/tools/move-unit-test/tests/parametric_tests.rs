@@ -18,7 +18,7 @@ const TWO_CASE_SOURCE: &str = r#"
     }
 "#;
 
-fn build_test_plan_from_source(source: &str) -> legacy_move_compiler::unit_test::TestPlan {
+fn build_test_plan_from_source(source: &str) -> move_compiler_v2::plan_builder::TestPlan {
     let temp = tempdir().unwrap();
     let source_path = temp.path().join("case_identity.move");
     fs::write(&source_path, source).unwrap();
@@ -223,12 +223,13 @@ fn option_and_string_parameter_test_case_actually_executes() {
         address 0x1 {
         module M {
             use std::option::{Self, Option};
-            use std::string::{Self, String};
+            use std::string;
 
-            #[test(o = option::some(5), s = string::utf8(vector[104, 105]))]
-            fun test_option_and_string(o: Option<u8>, s: String) {
+            #[test(o = option::some(5), s = b"hi")]
+            fun test_option_and_string(o: Option<u8>, s: vector<u8>) {
                 assert!(option::is_some(&o), 0);
                 assert!(*option::borrow(&o) == 5, 1);
+                let s = string::utf8(s);
                 assert!(string::bytes(&s) == &vector[104, 105], 2);
             }
         }

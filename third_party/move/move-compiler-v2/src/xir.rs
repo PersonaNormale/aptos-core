@@ -11,6 +11,7 @@
 
 use anyhow::{bail, ensure, Context, Result};
 use codespan::Span;
+use legacy_move_compiler::expansion::ast::AttributeSiblingIdGenerator;
 use move_binary_format::file_format::Visibility as MoveVisibility;
 use move_command_line_common::files::FileHash;
 use move_core_types::{
@@ -386,24 +387,19 @@ fn model_attributes(
     loc: &Loc,
     attributes: &[XirAttribute],
 ) -> Result<Vec<Attribute>> {
+    let mut sibling_ids = AttributeSiblingIdGenerator::new();
     attributes
         .iter()
-        .enumerate()
-        .map(|(index, attribute)| {
+        .map(|attribute| {
             model_attribute_apply(
                 env,
                 loc,
-                position_id(index),
+                sibling_ids.mint(),
                 &attribute.name,
                 &attribute.args,
             )
         })
         .collect()
-}
-
-/// Sibling ids run from zero within each attribute list, so a member's position is its id.
-fn position_id(index: usize) -> AttributeSiblingId {
-    AttributeSiblingId::new(u16::try_from(index).expect("attribute id overflow"))
 }
 
 fn model_attribute_apply(
@@ -413,40 +409,48 @@ fn model_attribute_apply(
     name: &str,
     args: &[XirAttributeArg],
 ) -> Result<Attribute> {
-    let node_id = env.new_node(loc.clone(), Type::Tuple(vec![]));
     let symbol = env.symbol_pool().make(name);
     match args {
-        [XirAttributeArg::Num { value }] => Ok(Attribute::Assign {
-            attribute_sibling_id,
-            node_id,
-            name: symbol,
-            value: AttributeValue::Value(node_id, Value::Number(value.parse()?)),
-        }),
-        [XirAttributeArg::Bool { value }] => Ok(Attribute::Assign {
-            attribute_sibling_id,
-            node_id,
-            name: symbol,
-            value: AttributeValue::Value(node_id, Value::Bool(*value)),
-        }),
+        [XirAttributeArg::Num { value }] => {
+            let value_node_id = env.new_node(loc.clone(), Type::Tuple(vec![]));
+            Ok(Attribute::new_assign(
+                env,
+                loc.clone(),
+                attribute_sibling_id,
+                symbol,
+                AttributeValue::Value(value_node_id, Value::Number(value.parse()?)),
+            ))
+        },
+        [XirAttributeArg::Bool { value }] => {
+            let value_node_id = env.new_node(loc.clone(), Type::Tuple(vec![]));
+            Ok(Attribute::new_assign(
+                env,
+                loc.clone(),
+                attribute_sibling_id,
+                symbol,
+                AttributeValue::Value(value_node_id, Value::Bool(*value)),
+            ))
+        },
         _ => {
+            let mut sibling_ids = AttributeSiblingIdGenerator::new();
             let attrs = args
                 .iter()
-                .enumerate()
-                .map(|(index, arg)| match arg {
+                .map(|arg| match arg {
                     XirAttributeArg::Name { name, args } => {
-                        model_attribute_apply(env, loc, position_id(index), name, args)
+                        model_attribute_apply(env, loc, sibling_ids.mint(), name, args)
                     },
                     XirAttributeArg::Num { .. } | XirAttributeArg::Bool { .. } => {
                         bail!("attribute `{name}` has an unnamed literal argument")
                     },
                 })
                 .collect::<Result<Vec<_>>>()?;
-            Ok(Attribute::Apply {
+            Ok(Attribute::new_apply(
+                env,
+                loc.clone(),
                 attribute_sibling_id,
-                node_id,
-                name: symbol,
+                symbol,
                 attrs,
-            })
+            ))
         },
     }
 }

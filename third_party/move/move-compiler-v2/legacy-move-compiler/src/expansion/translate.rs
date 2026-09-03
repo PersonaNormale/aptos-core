@@ -589,10 +589,10 @@ fn flatten_attributes(
     attr_position: AttributePosition,
     attributes: Vec<P::Attributes>,
 ) -> E::Attributes {
-    let mut sibling_ids = AttributeSiblingIdGenerator::new();
+    let mut sibling_ids = E::AttributeSiblingIdGenerator::new();
     let mut all_attrs = vec![];
     for attrs in attributes {
-        let attribute_sibling_id = sibling_ids.next();
+        let attribute_sibling_id = sibling_ids.mint();
         for attr in attrs.value {
             if let Some(attr) = attribute(context, attr_position, attribute_sibling_id, attr) {
                 all_attrs.push(attr);
@@ -600,25 +600,6 @@ fn flatten_attributes(
         }
     }
     unique_attributes(context, attr_position, false, all_attrs, false)
-}
-
-struct AttributeSiblingIdGenerator {
-    next: u16,
-}
-
-impl AttributeSiblingIdGenerator {
-    fn new() -> Self {
-        Self { next: 0 }
-    }
-
-    fn next(&mut self) -> E::AttributeSiblingId {
-        let id = E::AttributeSiblingId::new(self.next);
-        self.next = self
-            .next
-            .checked_add(1)
-            .expect("AttributeSiblingId overflow");
-        id
-    }
 }
 
 fn unique_attributes(
@@ -722,6 +703,8 @@ fn unique_attributes(
     attrs
 }
 
+/// Whether `unique_attributes` should skip its generic duplicate-attribute rejection
+/// (`Declarations::DuplicateItem`, a `NonblockingError` that drops the repeat) for `name_`.
 fn skip_dedup(name_: &E::AttributeName_, is_test_context: bool) -> bool {
     match name_ {
         E::AttributeName_::Known(KnownAttribute::Testing(
@@ -741,6 +724,9 @@ fn skip_dedup(name_: &E::AttributeName_, is_test_context: bool) -> bool {
         E::AttributeName_::Known(KnownAttribute::Execution(
             ExecutionAttribute::Persistent | ExecutionAttribute::ModuleLock,
         )) => false,
+        // A repeated test parameter name inside a test attribute is not a duplicate attribute in
+        // this generic sense: it gets a `Severity::Warning` and "first assignment wins" instead
+        // of this function's hard error and drop.
         E::AttributeName_::Unknown(_) => is_test_context,
     }
 }

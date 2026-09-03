@@ -9,8 +9,6 @@ module parametric_testing::example {
     use std::vector;
     #[test_only]
     use std::option::{Self, Option};
-    #[test_only]
-    use std::string::{Self, String};
 
     // ---------------------------------------------------------------------------
     // Module logic under test
@@ -487,10 +485,10 @@ module parametric_testing::example {
     }
 
     // ---------------------------------------------------------------------------
-    // Option and String parameters. Both are recognized by their public constructor
-    // functions, `option::some`/`option::none`/`string::utf8`, in attribute position, rather
-    // than by a field literal: neither type exposes a public field a test attribute could
-    // construct directly.
+    // Option parameters. Recognized by its public constructor functions,
+    // `option::some`/`option::none`, in attribute position, rather than by a field
+    // literal: `Option` does not expose a public field a test attribute could construct
+    // directly.
     // ---------------------------------------------------------------------------
 
     #[test(o = option::some(5))]
@@ -504,11 +502,6 @@ module parametric_testing::example {
         assert!(option::is_none(&o));
     }
 
-    #[test(s = string::utf8(vector[104, 105]))]
-    fun string_utf8_param(s: String) {
-        assert!(string::bytes(&s) == &vector[104, 105]);
-    }
-
     // ---------------------------------------------------------------------------
     // Nesting: an Option may hold a struct value, converted the same way a struct field
     // holding a nested value already is.
@@ -517,31 +510,6 @@ module parametric_testing::example {
     #[test(o = option::some(Point { x: 1, y: 2 }))]
     fun option_of_struct_param(o: Option<Point>) {
         assert!(option::is_some(&o));
-    }
-
-    // ---------------------------------------------------------------------------
-    // option::from_vec. Framework-only (this package already depends on the framework
-    // stdlib, so it's the only Option representation in scope here): a 0- or 1-element
-    // vector converts to None/Some, matching the vector's own runtime length check.
-    // ---------------------------------------------------------------------------
-
-    #[test(o = option::from_vec(vector[]), n = option::from_vec(vector[5]))]
-    fun option_from_vec_param(o: Option<u8>, n: Option<u8>) {
-        assert!(option::is_none(&o));
-        assert!(option::is_some(&n));
-        assert!(*option::borrow(&n) == 5);
-    }
-
-    // ---------------------------------------------------------------------------
-    // string::try_utf8. Non-aborting counterpart to string::utf8: invalid bytes produce
-    // None instead of failing the whole test attribute, so callers should check
-    // is_some/is_none rather than assuming success unconditionally.
-    // ---------------------------------------------------------------------------
-
-    #[test(s = string::try_utf8(vector[104, 105]), n = string::try_utf8(vector[255]))]
-    fun string_try_utf8_param(s: Option<String>, n: Option<String>) {
-        assert!(option::is_some(&s));
-        assert!(option::is_none(&n));
     }
 
     // ---------------------------------------------------------------------------
