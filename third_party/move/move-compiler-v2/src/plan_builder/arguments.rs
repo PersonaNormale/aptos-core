@@ -15,10 +15,10 @@ use codespan_reporting::diagnostic::Severity;
 use legacy_move_compiler::shared::known_attributes::TestingAttribute;
 use move_core_types::value::MoveValue;
 use move_model::{
-    ast::{Attribute, AttributeValue, Value},
-    model::{FunctionEnv, GlobalEnv, Loc, NodeId, Parameter},
+    ast::{Attribute, AttributeValue},
+    model::{FunctionEnv, GlobalEnv, Loc, Parameter},
     symbol::Symbol,
-    ty::{PrimitiveType, Type},
+    ty::{PrimitiveType, Type, TypeDisplayContext},
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -63,8 +63,8 @@ pub(super) fn build_case_arguments(
         let Parameter(var, ty, var_loc) = &param;
 
         match test_annotation_params.get(var) {
-            Some((value_node_id, value)) => match primitive_param_type(ty) {
-                Some(target) => match to_move_value(value, *value_node_id, target, env) {
+            Some(value) => match supported_param_type(ty) {
+                Some(target) => match to_move_value(value, &target, env) {
                     Ok(move_value) => arguments.push(move_value),
                     Err(err) => report_conversion_error(env, &test_attribute_loc, var_loc, err),
                 },
@@ -92,25 +92,27 @@ pub(super) fn build_case_arguments(
     arguments
 }
 
-/// The `PrimitiveType` a `#[test(...)]` assignment must be checked against for this declared
-/// parameter type, or `None` if `ty` is not a supported parameter shape (a struct, vector, or
-/// other non-primitive type, unsupported both before and after this layer).
+/// The `Type` a `#[test(...)]` assignment must be checked against for this declared parameter
+/// type, or `None` if `ty` is not a supported parameter type (a struct or other non-primitive,
+/// non-vector type). Recurses through `Type::Vector` so `vector<vector<u8>>` is supported to
+/// unbounded depth, the same as any other `vector<T>`.
 ///
-/// `&signer` is the only reference shape accepted, matching the one special case Move's own
-/// test harness constructs by reference. No other primitive is accepted by reference: `ty`
-/// being e.g. `&u8` is not a supported parameter shape either.
-fn primitive_param_type(ty: &Type) -> Option<PrimitiveType> {
+/// `&signer` is the only reference type accepted, matching the one special case Move's own test
+/// harness constructs by reference. No other primitive is accepted by reference: `ty` being e.g.
+/// `&u8` is not a supported parameter type either, and neither is `vector<T>` behind a reference.
+fn supported_param_type(ty: &Type) -> Option<Type> {
     match ty {
-        Type::Primitive(p) => Some(*p),
+        Type::Primitive(p) => Some(Type::Primitive(*p)),
         Type::Reference(_, inner) if **inner == Type::Primitive(PrimitiveType::Signer) => {
-            Some(PrimitiveType::Signer)
+            Some(Type::Primitive(PrimitiveType::Signer))
         },
+        Type::Vector(inner) => supported_param_type(inner).map(|t| Type::Vector(Box::new(t))),
         _ => None,
     }
 }
 
 /// Reports a `ConversionError` from `to_move_value` at the attribute's own location, labeling
-/// the specific parameter it was assigned to - the two-location shape `build_case_arguments`
+/// the specific parameter it was assigned to - the two-location pattern `build_case_arguments`
 /// already used for its "expected an address or signer" diagnostic before this layer.
 fn report_conversion_error(
     env: &GlobalEnv,
@@ -127,13 +129,21 @@ fn report_conversion_error(
             "unable to generate test: unexpected argument type",
             "expected an `address` or `signer` literal".to_string(),
         ),
-        ConversionError::TypeMismatch { declared } => (
-            "unable to generate test: mismatched types",
-            format!(
-                "attribute value is explicitly typed `{}`, which disagrees with this parameter",
-                declared
-            ),
+        ConversionError::NotABool => (
+            "unable to generate test: unexpected argument type",
+            "expected a `bool` literal (`true` or `false`)".to_string(),
         ),
+        ConversionError::TypeMismatch { declared } => {
+            let ctx = TypeDisplayContext::new(env);
+            (
+                "unable to generate test: mismatched types",
+                format!(
+                    "attribute value is explicitly typed `{}`, which disagrees with this \
+                     parameter",
+                    declared.display(&ctx)
+                ),
+            )
+        },
         ConversionError::OutOfRange { min, max } => (
             "unable to generate test: literal out of range",
             format!(
@@ -143,7 +153,8 @@ fn report_conversion_error(
         ),
         ConversionError::UnsupportedParameterType => (
             "unable to generate test: unsupported parameter type",
-            "test attribute assignments only support `signer`, `address`, and integer parameters"
+            "test attribute assignments only support `signer`, `address`, `bool`, and integer \
+             parameters"
                 .to_string(),
         ),
     };
@@ -161,7 +172,7 @@ fn parse_test_attribute(
     env: &GlobalEnv,
     test_attribute: &Attribute,
     depth: usize,
-) -> Checked<BTreeMap<Symbol, (NodeId, Value)>> {
+) -> Checked<BTreeMap<Symbol, AttributeValue>> {
     match test_attribute {
         Attribute::Apply { node_id, .. } if depth > 0 => {
             let loc = env.get_node_loc(*node_id);
@@ -212,20 +223,21 @@ fn parse_test_attribute(
                 env.error(&loc, "unexpected nested attribute in test declaration");
                 return Err(ErrorReported);
             }
-            let (value_node_id, val) = match value {
-                AttributeValue::Value(value_node_id, val) => (*value_node_id, val.clone()),
+            match value {
+                AttributeValue::Value(..) | AttributeValue::Vector(..) => {
+                    let mut args = BTreeMap::new();
+                    args.insert(*name, value.clone());
+                    Ok(args)
+                },
                 AttributeValue::Name(..) => {
                     let loc = env.get_node_loc(*node_id);
                     env.error_with_labels(&loc, "unsupported attribute value", vec![(
                         loc.clone(),
                         "assigned in this attribute".to_string(),
                     )]);
-                    return Err(ErrorReported);
+                    Err(ErrorReported)
                 },
-            };
-            let mut args = BTreeMap::new();
-            args.insert(*name, (value_node_id, val));
-            Ok(args)
+            }
         },
     }
 }

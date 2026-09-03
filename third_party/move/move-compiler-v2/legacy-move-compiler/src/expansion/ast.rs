@@ -40,16 +40,17 @@ pub struct Program {
 // Attributes
 //**************************************************************************************************
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum AttributeValue_ {
     Value(Value),
     Module(ModuleIdent),
     ModuleAccess(ModuleAccess),
+    Vector(Option<Type>, Vec<AttributeValue>),
 }
 pub type AttributeValue = Spanned<AttributeValue_>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Attribute_ {
     Name(Name),
     Assigned(Name, Box<AttributeValue>),
@@ -69,7 +70,7 @@ impl AttributeSiblingId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
     pub loc: Loc,
     pub attribute_sibling_id: AttributeSiblingId,
@@ -1132,6 +1133,17 @@ impl AstDebug for AttributeValue_ {
             AttributeValue_::Value(v) => v.ast_debug(w),
             AttributeValue_::Module(m) => w.write(format!("{}", m)),
             AttributeValue_::ModuleAccess(n) => n.ast_debug(w),
+            AttributeValue_::Vector(ty_opt, elems) => {
+                w.write("vector");
+                if let Some(ty) = ty_opt {
+                    w.write("<");
+                    ty.ast_debug(w);
+                    w.write(">");
+                }
+                w.write("[");
+                w.comma(elems, |w, e| e.ast_debug(w));
+                w.write("]");
+            },
         }
     }
 }

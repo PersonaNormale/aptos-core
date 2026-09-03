@@ -657,25 +657,34 @@ impl<'env> Docgen<'env> {
                 ..
             } => {
                 let symbol_string = self.name_string(*symbol).to_string();
-                match attribute_value {
-                    AttributeValue::Value(_node_id, value) => {
-                        let value_string = self.env.display(value);
-                        format!("{} = {}", symbol_string, value_string)
-                    },
-                    AttributeValue::Name(_node_id, module_name_option, symbol2) => {
-                        let symbol2_name = self.name_string(*symbol2).to_string();
-                        let module_prefix = match module_name_option {
-                            None => "".to_string(),
-                            Some(module_name) => {
-                                format!("{}::", module_name.display_full(self.env))
-                            },
-                        };
-                        format!("{} = {}{}", symbol_string, module_prefix, symbol2_name)
-                    },
-                }
+                format!(
+                    "{} = {}",
+                    symbol_string,
+                    self.gen_attribute_value(attribute_value)
+                )
             },
         };
         annotation_body
+    }
+
+    /// Gets a readable version of an attribute value, recursing into `AttributeValue::Vector`
+    /// elements the same way `gen_attribute` recurses into nested attributes.
+    fn gen_attribute_value(&self, attribute_value: &AttributeValue) -> String {
+        match attribute_value {
+            AttributeValue::Value(_node_id, value) => self.env.display(value).to_string(),
+            AttributeValue::Name(_node_id, module_name_option, symbol2) => {
+                let symbol2_name = self.name_string(*symbol2).to_string();
+                let module_prefix = match module_name_option {
+                    None => "".to_string(),
+                    Some(module_name) => format!("{}::", module_name.display_full(self.env)),
+                };
+                format!("{}{}", module_prefix, symbol2_name)
+            },
+            AttributeValue::Vector(_node_id, elems) => {
+                let elems_string = elems.iter().map(|e| self.gen_attribute_value(e)).join(", ");
+                format!("vector[{}]", elems_string)
+            },
+        }
     }
 
     /// Returns attributes as vector of Strings like #[attr].

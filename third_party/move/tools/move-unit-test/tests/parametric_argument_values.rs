@@ -414,3 +414,139 @@ fn mixed_signer_address_number_signed_and_256_bit_parameters() {
         MoveValue::U256(U256::from(5u64)),
     ]);
 }
+
+#[test]
+fn bool_true_and_false_are_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(b = true)]
+            #[test(b = false)]
+            fun bool_accepted(b: bool) {
+                let _ = b;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(
+        module.tests.get("bool_accepted@case0").unwrap().arguments,
+        vec![MoveValue::Bool(true)]
+    );
+    assert_eq!(
+        module.tests.get("bool_accepted@case1").unwrap().arguments,
+        vec![MoveValue::Bool(false)]
+    );
+}
+
+#[test]
+fn vector_of_each_scalar_primitive_is_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(xs = vector[1, 2, 3])]
+            fun u8_vec(xs: vector<u8>) { let _ = xs; }
+            #[test(xs = vector[1, 2, 3])]
+            fun u256_vec(xs: vector<u256>) { let _ = xs; }
+            #[test(xs = vector[-1, -2, -3])]
+            fun i8_vec(xs: vector<i8>) { let _ = xs; }
+            #[test(xs = vector[-1, -2, -3])]
+            fun i256_vec(xs: vector<i256>) { let _ = xs; }
+            #[test(xs = vector[true, false])]
+            fun bool_vec(xs: vector<bool>) { let _ = xs; }
+            #[test(xs = vector[@0x1, @0x2])]
+            fun address_vec(xs: vector<address>) { let _ = xs; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("u8_vec").unwrap().arguments, vec![
+        MoveValue::Vector(vec![MoveValue::U8(1), MoveValue::U8(2), MoveValue::U8(3),])
+    ]);
+    assert_eq!(module.tests.get("u256_vec").unwrap().arguments, vec![
+        MoveValue::Vector(vec![
+            MoveValue::U256(U256::from(1u64)),
+            MoveValue::U256(U256::from(2u64)),
+            MoveValue::U256(U256::from(3u64)),
+        ])
+    ]);
+    assert_eq!(module.tests.get("i8_vec").unwrap().arguments, vec![
+        MoveValue::Vector(vec![
+            MoveValue::I8(-1),
+            MoveValue::I8(-2),
+            MoveValue::I8(-3),
+        ])
+    ]);
+    assert_eq!(module.tests.get("i256_vec").unwrap().arguments, vec![
+        MoveValue::Vector(vec![
+            MoveValue::I256(I256::from(-1i64)),
+            MoveValue::I256(I256::from(-2i64)),
+            MoveValue::I256(I256::from(-3i64)),
+        ])
+    ]);
+    assert_eq!(module.tests.get("bool_vec").unwrap().arguments, vec![
+        MoveValue::Vector(vec![MoveValue::Bool(true), MoveValue::Bool(false),])
+    ]);
+    assert_eq!(module.tests.get("address_vec").unwrap().arguments, vec![
+        MoveValue::Vector(vec![
+            MoveValue::Address(AccountAddress::from_hex_literal("0x1").unwrap()),
+            MoveValue::Address(AccountAddress::from_hex_literal("0x2").unwrap()),
+        ])
+    ]);
+}
+
+#[test]
+fn explicit_vector_type_annotation_matching_parameter_is_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(xs = vector<u8>[1, 2, 3])]
+            fun explicit(xs: vector<u8>) {
+                let _ = xs;
+            }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("explicit").unwrap().arguments, vec![
+        MoveValue::Vector(vec![MoveValue::U8(1), MoveValue::U8(2), MoveValue::U8(3),])
+    ]);
+}
+
+#[test]
+fn empty_vector_is_supported_for_every_element_type() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(xs = vector[])]
+            fun empty_u8(xs: vector<u8>) { let _ = xs; }
+            #[test(xs = vector[])]
+            fun empty_bool(xs: vector<bool>) { let _ = xs; }
+            #[test(xs = vector[])]
+            fun empty_address(xs: vector<address>) { let _ = xs; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("empty_u8").unwrap().arguments, vec![
+        MoveValue::Vector(vec![])
+    ]);
+    assert_eq!(module.tests.get("empty_bool").unwrap().arguments, vec![
+        MoveValue::Vector(vec![])
+    ]);
+    assert_eq!(module.tests.get("empty_address").unwrap().arguments, vec![
+        MoveValue::Vector(vec![])
+    ]);
+}
