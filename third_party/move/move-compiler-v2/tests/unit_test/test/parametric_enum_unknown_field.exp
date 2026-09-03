@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: unknown struct field
+  ┌─ tests/unit_test/test/parametric_enum_unknown_field.move:5:7
+  │
+5 │     #[test(s = Shape::Circle { radius: 5, extra: 1 })]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no field named `extra` on this struct
+6 │     fun unknown_field(s: Shape) {
+  │                       - corresponding to this parameter
