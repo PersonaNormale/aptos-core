@@ -121,7 +121,7 @@ fn report_conversion_error(
     let (msg, note) = match err {
         ConversionError::NotANumber => (
             "unable to generate test: unexpected argument type",
-            "expected an unsigned integer literal".to_string(),
+            "expected a numeric literal".to_string(),
         ),
         ConversionError::NotAnAddress => (
             "unable to generate test: unexpected argument type",
@@ -143,8 +143,7 @@ fn report_conversion_error(
         ),
         ConversionError::UnsupportedParameterType => (
             "unable to generate test: unsupported parameter type",
-            "test attribute assignments only support `signer`, `address`, and unsigned integer \
-             parameters"
+            "test attribute assignments only support `signer`, `address`, and integer parameters"
                 .to_string(),
         ),
     };

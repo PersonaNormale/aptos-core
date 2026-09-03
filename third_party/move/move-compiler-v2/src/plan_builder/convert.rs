@@ -385,14 +385,21 @@ pub(super) fn to_move_value(
             .map(|n| MoveValue::U64(n.to_u64().expect("bounds already checked"))),
         PrimitiveType::U128 => expect_bounded_number(value, node_id, PrimitiveType::U128, env)
             .map(|n| MoveValue::U128(n.to_u128().expect("bounds already checked"))),
+        PrimitiveType::I8 => expect_bounded_number(value, node_id, PrimitiveType::I8, env)
+            .map(|n| MoveValue::I8(n.to_i8().expect("bounds already checked"))),
+        PrimitiveType::I16 => expect_bounded_number(value, node_id, PrimitiveType::I16, env)
+            .map(|n| MoveValue::I16(n.to_i16().expect("bounds already checked"))),
+        PrimitiveType::I32 => expect_bounded_number(value, node_id, PrimitiveType::I32, env)
+            .map(|n| MoveValue::I32(n.to_i32().expect("bounds already checked"))),
+        PrimitiveType::I64 => expect_bounded_number(value, node_id, PrimitiveType::I64, env)
+            .map(|n| MoveValue::I64(n.to_i64().expect("bounds already checked"))),
+        PrimitiveType::I128 => expect_bounded_number(value, node_id, PrimitiveType::I128, env)
+            .map(|n| MoveValue::I128(n.to_i128().expect("bounds already checked"))),
+        PrimitiveType::U256 => expect_bounded_number(value, node_id, PrimitiveType::U256, env)
+            .map(|n| MoveValue::U256(n.clone().try_into().expect("bounds already checked"))),
+        PrimitiveType::I256 => expect_bounded_number(value, node_id, PrimitiveType::I256, env)
+            .map(|n| MoveValue::I256(n.clone().try_into().expect("bounds already checked"))),
         PrimitiveType::Bool
-        | PrimitiveType::U256
-        | PrimitiveType::I8
-        | PrimitiveType::I16
-        | PrimitiveType::I32
-        | PrimitiveType::I64
-        | PrimitiveType::I128
-        | PrimitiveType::I256
         | PrimitiveType::Num
         | PrimitiveType::Range
         | PrimitiveType::EventStore => Err(ConversionError::UnsupportedParameterType),

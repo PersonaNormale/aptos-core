@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: literal out of range
+  ┌─ tests/unit_test/test/parametric_i128_out_of_range_above.move:4:7
+  │
+4 │     #[test(x = 170141183460469231731687303715884105728)]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ value must be between `-170141183460469231731687303715884105728` and `170141183460469231731687303715884105727` for this parameter
+5 │     fun out_of_range(x: i128) {
+  │                      - corresponding to this parameter

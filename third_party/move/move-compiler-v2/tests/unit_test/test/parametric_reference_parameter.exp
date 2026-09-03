@@ -4,6 +4,6 @@ error: unable to generate test: unsupported parameter type
   ┌─ tests/unit_test/test/parametric_reference_parameter.move:4:7
   │
 4 │     #[test(x = 5)]
-  │       ^^^^^^^^^^^ test attribute assignments only support `signer`, `address`, and unsigned integer parameters
+  │       ^^^^^^^^^^^ test attribute assignments only support `signer`, `address`, and integer parameters
 5 │     fun reference_param(x: &u8) {
   │                         - corresponding to this parameter
