@@ -658,6 +658,12 @@ pub struct GlobalEnv {
     /// A flag which allows to indicate that the whole program including
     /// dependencies should be built.
     pub(crate) everything_is_target: RefCell<bool>,
+    /// The compiler's builtin range constants (`MAX_U8`..`MAX_I256`, `MIN_I8`..`MIN_I256`),
+    /// keyed by name, populated once by `ModelBuilder::register_builtin_constants` from the
+    /// builder-phase `const_table`. A plain lookup table, not a `ModuleData`: these constants
+    /// have no real defining module, so there's nothing to reuse `find_module`/
+    /// `find_named_constant` against.
+    pub(crate) builtin_constants: RefCell<BTreeMap<Symbol, (Value, Type)>>,
     /// Whether the v2 compiler has generated this model.
     /// TODO: replace with a proper version number once we have this in file format
     pub(crate) generated_by_v2: bool,
@@ -738,6 +744,7 @@ impl GlobalEnv {
             extlib_address: None,
             address_alias_map: Default::default(),
             everything_is_target: Default::default(),
+            builtin_constants: RefCell::new(BTreeMap::new()),
             generated_by_v2: false,
             verify_mode: false,
             cmp_types: RefCell::new(Default::default()),
@@ -2334,6 +2341,13 @@ impl GlobalEnv {
             }
         }
         None
+    }
+
+    /// Looks up a compiler builtin range constant (`MAX_U8`..`MAX_I256`, `MIN_I8`..`MIN_I256`)
+    /// by name. Populated once by `ModelBuilder::register_builtin_constants`; empty before that
+    /// runs.
+    pub fn find_builtin_constant(&self, name: Symbol) -> Option<(Value, Type)> {
+        self.builtin_constants.borrow().get(&name).cloned()
     }
 
     /// Finds a module by simple name and returns an environment for it.

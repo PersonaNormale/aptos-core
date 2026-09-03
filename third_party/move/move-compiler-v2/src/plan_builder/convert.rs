@@ -32,6 +32,13 @@ pub(super) enum ConversionError {
     },
     UnsupportedParameterType,
     UnknownStruct,
+    UnknownModule {
+        module: ModuleName,
+    },
+    UnknownConstant {
+        opt_module: Option<ModuleName>,
+        name: Symbol,
+    },
     VariantOnNonEnum {
         struct_id: QualifiedId<StructId>,
         variant: Symbol,
@@ -120,7 +127,25 @@ pub(super) fn to_move_value(
         ) => Err(ConversionError::TypeMismatch {
             declared: env.get_node_type(*node_id),
         }),
-        (AttributeValue::Name(..), _) => Err(ConversionError::UnsupportedParameterType),
+        (AttributeValue::Name(node_id, opt_module, name), _) => {
+            let (value, resolved_ty) = super::constant_resolution::resolve_test_constant(
+                env,
+                current_module,
+                opt_module,
+                *name,
+            )?;
+            if resolved_ty != *target {
+                return Err(ConversionError::TypeMismatch {
+                    declared: resolved_ty,
+                });
+            }
+            to_move_value(
+                &AttributeValue::Value(*node_id, value),
+                target,
+                current_module,
+                env,
+            )
+        },
     }
 }
 
@@ -191,12 +216,11 @@ fn expect_bool(value: &Value) -> Result<bool, ConversionError> {
     Ok(*b)
 }
 
-/// Resolves a `Value::Number`, checking it against `target`'s bounds. If the literal carried an
-/// explicit suffix (`env.get_node_type(node_id)` is a concrete `Type::Primitive`), that suffix
-/// must agree with `target` first. An unsuffixed literal's node type is an unresolved
-/// `Type::Var`, since the throwaway `ExpTranslator` that typed it never runs the finalization
-/// pass that would default it to `u64`; that case skips the suffix check entirely, the same
-/// way an unsuffixed literal in an ordinary function call is free to take on its target type.
+/// Resolves a `Value::Number`, checking it against `target`'s bounds. A concrete node type that
+/// disagrees with `target` is a suffix mismatch only if `n` could have been more than one
+/// primitive type (`PrimitiveType::possible_int_types`, the same check `translate_number` uses
+/// to decide ambiguity). If `n` only fits one type at all (`i256`/`u256`), that's not a suffix,
+/// it's just out of `target`'s range.
 fn expect_bounded_number<'a>(
     value: &'a Value,
     node_id: NodeId,
@@ -207,7 +231,7 @@ fn expect_bounded_number<'a>(
         return Err(ConversionError::NotANumber);
     };
     if let Type::Primitive(declared) = env.get_node_type(node_id) {
-        if declared != target {
+        if declared != target && PrimitiveType::possible_int_types(n.clone()).len() > 1 {
             return Err(ConversionError::TypeMismatch {
                 declared: Type::Primitive(declared),
             });

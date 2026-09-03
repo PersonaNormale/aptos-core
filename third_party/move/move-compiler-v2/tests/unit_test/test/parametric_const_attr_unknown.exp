@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: unknown constant
+  ┌─ tests/unit_test/test/parametric_const_attr_unknown.move:3:7
+  │
+3 │     #[test(x = DOES_NOT_EXIST)]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^ no constant named `DOES_NOT_EXIST` found
+4 │     fun t(x: u8) {
+  │           - corresponding to this parameter

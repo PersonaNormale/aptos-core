@@ -14,6 +14,7 @@
 mod arguments;
 mod build;
 mod collect;
+mod constant_resolution;
 mod convert;
 mod error;
 mod failure;

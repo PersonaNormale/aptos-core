@@ -20,6 +20,6 @@ error: unable to generate test: mismatched types
    ┌─ tests/unit_test/test/parametric_vector_element_out_of_range.move:13:7
    │
 13 │     #[test(xs = vector[5u16])]
-   │       ^^^^^^^^^^^^^^^^^^^^^^^ attribute value is explicitly typed `u16`, which disagrees with this parameter
+   │       ^^^^^^^^^^^^^^^^^^^^^^^ attribute value has type `u16`, which disagrees with this parameter
 14 │     fun suffix_mismatch(xs: vector<u8>) {
    │                         -- corresponding to this parameter

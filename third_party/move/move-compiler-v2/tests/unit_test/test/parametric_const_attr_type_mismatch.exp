@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: mismatched types
+  ┌─ tests/unit_test/test/parametric_const_attr_type_mismatch.move:5:7
+  │
+5 │     #[test(x = FLAG)]
+  │       ^^^^^^^^^^^^^^ attribute value has type `bool`, which disagrees with this parameter
+6 │     fun t(x: u64) {
+  │           - corresponding to this parameter

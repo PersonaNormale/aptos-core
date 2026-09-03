@@ -427,6 +427,16 @@ impl ModuleBuilder<'_, '_> {
         }
     }
 
+    /// Resolves a module identifier's address into a `ModuleName`, at the given `loc`.
+    fn resolve_module_name(&self, loc: &Loc, mident: &EA::ModuleIdent) -> ModuleName {
+        let addr_bytes = self.parent.resolve_address(loc, &mident.value.address);
+        ModuleName::from_address_bytes_and_name(
+            addr_bytes,
+            self.symbol_pool()
+                .make(mident.value.module.0.value.as_str()),
+        )
+    }
+
     /// Translates one `EA::AttributeValue` node, recursively. Every nesting level gets its own
     /// `NodeId`, the same way a single suffixed scalar (`5u8`) gets its own node today: this is
     /// what lets an explicit `vector<u16>[...]` annotation, or a suffixed element nested inside a
@@ -453,14 +463,8 @@ impl ModuleBuilder<'_, '_> {
                 AttributeValue::Value(value_node_id, val)
             },
             EA::AttributeValue_::Module(mident) => {
-                let addr_bytes = self
-                    .parent
-                    .resolve_address(&self.parent.to_loc(&mident.loc), &mident.value.address);
-                let module_name = ModuleName::from_address_bytes_and_name(
-                    addr_bytes,
-                    self.symbol_pool()
-                        .make(mident.value.module.0.value.as_str()),
-                );
+                let loc = self.parent.to_loc(&mident.loc);
+                let module_name = self.resolve_module_name(&loc, mident);
                 // TODO support module attributes more than via empty string
                 AttributeValue::Name(
                     value_node_id,
@@ -479,14 +483,8 @@ impl ModuleBuilder<'_, '_> {
                     // `check_no_variant_and_convert_maccess` exists for a different ambiguity
                     // (spec-schema/const disambiguation) and hard-errors on any variant unconditionally,
                     // so it is deliberately not called here.
-                    let addr_bytes = self
-                        .parent
-                        .resolve_address(&self.parent.to_loc(&macc.loc), &mident.value.address);
-                    let module_name = ModuleName::from_address_bytes_and_name(
-                        addr_bytes,
-                        self.symbol_pool()
-                            .make(mident.value.module.0.value.as_str()),
-                    );
+                    let loc = self.parent.to_loc(&macc.loc);
+                    let module_name = self.resolve_module_name(&loc, &mident);
                     AttributeValue::Pack(
                         value_node_id,
                         Some(module_name),
@@ -498,14 +496,8 @@ impl ModuleBuilder<'_, '_> {
                 },
                 EA::ModuleAccess_::ModuleAccess(mident, n, None) => {
                     let (_, macc) = self.check_no_variant_and_convert_maccess(macc);
-                    let addr_bytes = self
-                        .parent
-                        .resolve_address(&self.parent.to_loc(&macc.loc), &mident.value.address);
-                    let module_name = ModuleName::from_address_bytes_and_name(
-                        addr_bytes,
-                        self.symbol_pool()
-                            .make(mident.value.module.0.value.as_str()),
-                    );
+                    let loc = self.parent.to_loc(&macc.loc);
+                    let module_name = self.resolve_module_name(&loc, &mident);
                     AttributeValue::Name(
                         value_node_id,
                         Some(module_name),
@@ -535,14 +527,8 @@ impl ModuleBuilder<'_, '_> {
                         (None, self.symbol_pool().make(n.value.as_str()), None)
                     },
                     EA::ModuleAccess_::ModuleAccess(mident, n, v) => {
-                        let addr_bytes = self
-                            .parent
-                            .resolve_address(&self.parent.to_loc(&macc.loc), &mident.value.address);
-                        let module_name = ModuleName::from_address_bytes_and_name(
-                            addr_bytes,
-                            self.symbol_pool()
-                                .make(mident.value.module.0.value.as_str()),
-                        );
+                        let loc = self.parent.to_loc(&macc.loc);
+                        let module_name = self.resolve_module_name(&loc, mident);
                         (
                             Some(module_name),
                             self.symbol_pool().make(n.value.as_str()),

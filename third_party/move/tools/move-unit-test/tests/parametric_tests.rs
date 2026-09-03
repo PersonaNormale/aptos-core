@@ -218,6 +218,128 @@ fn enum_variant_parameter_test_case_actually_executes() {
 }
 
 #[test]
+fn same_module_named_constant_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            const BIG: u64 = 1000;
+
+            #[test(x = BIG)]
+            fun t(x: u64) {
+                assert!(x == 1000, 0);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}
+
+#[test]
+fn builtin_range_constant_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(x = MAX_U8)]
+            fun u8_max(x: u8) {
+                assert!(x == 255, 0);
+            }
+
+            #[test(x = MIN_I64)]
+            fun i64_min(x: i64) {
+                assert!(x == -9223372036854775808i64, 0);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 2; passed: 2; failed: 0"));
+}
+
+#[test]
+fn cross_module_public_named_constant_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module consts {
+            public const LIMIT: u32 = 42;
+        }
+        module m {
+            use 0x1::consts;
+
+            #[test(x = consts::LIMIT)]
+            fun t(x: u32) {
+                assert!(x == 42, 0);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}
+
+#[test]
+fn cross_module_private_named_constant_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module consts {
+            const EINVALID_STATE: u64 = 1;
+        }
+        module m {
+            #[test(x = 0x1::consts::EINVALID_STATE)]
+            fun t(x: u64) {
+                assert!(x == 1, 0);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}
+
+#[test]
+fn shadowing_local_constant_wins_over_builtin_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module m {
+            const MAX_U8: bool = false;
+
+            #[test(x = MAX_U8)]
+            fun t(x: bool) {
+                assert!(!x, 0);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}
+
+#[test]
+fn nested_in_vector_named_constant_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module m {
+            const A: u8 = 1;
+
+            #[test(xs = vector[A, MAX_U8])]
+            fun t(xs: vector<u8>) {
+                assert!(*std::vector::borrow(&xs, 0) == 1, 0);
+                assert!(*std::vector::borrow(&xs, 1) == 255, 1);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}
+
+#[test]
 fn option_and_string_parameter_test_case_actually_executes() {
     let source = r#"
         address 0x1 {
