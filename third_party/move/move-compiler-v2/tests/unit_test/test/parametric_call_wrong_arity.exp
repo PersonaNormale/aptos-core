@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: wrong number of positional fields
+  ┌─ tests/unit_test/test/parametric_call_wrong_arity.move:5:7
+  │
+5 │     #[test(o = option::some())]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^ expected 1 field(s), found 0
+6 │     fun wrong_arity(o: Option<u8>) {
+  │                     - corresponding to this parameter
