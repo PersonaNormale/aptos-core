@@ -3,8 +3,7 @@
 // Parts of the file are Copyright (c) Aptos Foundation
 // All Aptos Foundation code and content is licensed pursuant to the Innovation-Enabling Source Code License, available at https://github.com/aptos-labs/aptos-core/blob/main/LICENSE
 
-//! Converts a `#[test(...)]` attribute value into the `MoveValue` a declared parameter type
-//! expects: scalar/vector dispatch and the leaf primitive conversions.
+//! Converts test arguments to `MoveValue`s of the declared parameter types.
 
 use move_core_types::{account_address::AccountAddress, value::MoveValue};
 use move_model::{
@@ -15,10 +14,7 @@ use move_model::{
 };
 use num::{BigInt, ToPrimitive};
 
-/// Why `to_move_value` could not produce a `MoveValue` for a given parameter type. Carries
-/// enough detail for the caller to phrase a specific diagnostic; `to_move_value` and its
-/// helpers never emit diagnostics themselves, since only the caller knows the parameter's own
-/// location to label.
+/// Conversion failure details for the caller to report at the parameter's location.
 pub(super) enum ConversionError {
     NotANumber,
     NotAnAddress,
@@ -64,15 +60,8 @@ pub(super) enum ConversionError {
     },
 }
 
-/// Converts a `#[test(...)]` attribute value into the `MoveValue` a parameter of type `target`
-/// expects. `value` carries its own `NodeId` at every nesting level, so a suffixed scalar's suffix
-/// check works identically whether `value` is the whole attribute assignment or an element nested
-/// inside a vector. `AttributeValue::Vector` carries its own explicit element type directly
-/// (`None` when the literal had no `vector<T>[...]` annotation), rather than through its `NodeId`.
-///
-/// Not `std::convert::TryFrom`: resolving a symbolic address alias needs `env`, and `TryFrom`'s
-/// signature has no room for it. Emits no diagnostic; the caller owns the parameter's location and
-/// reports the failure itself.
+/// Converts an attribute value recursively. Scalar node types retain numeric suffixes;
+/// vector literals carry their optional explicit element type separately.
 pub(super) fn to_move_value(
     value: &AttributeValue,
     target: &Type,
@@ -149,8 +138,6 @@ pub(super) fn to_move_value(
     }
 }
 
-/// The scalar leaf of `to_move_value`: per-primitive conversion, dispatched from the top level or
-/// from the `Vector` arm for each element.
 fn to_move_scalar(
     value: &Value,
     node_id: NodeId,
@@ -205,10 +192,6 @@ fn expect_address(value: &Value, env: &GlobalEnv) -> Result<AccountAddress, Conv
     }
 }
 
-/// Resolves a `Value::Bool`. Unlike a numeric literal, `true`/`false` never needs a suffix check:
-/// the model builder already resolves a bool literal to a fully concrete `Type::Primitive(Bool)`
-/// with no unsuffixed-default ambiguity, so there is nothing left to verify here beyond the value
-/// kind itself.
 fn expect_bool(value: &Value) -> Result<bool, ConversionError> {
     let Value::Bool(b) = value else {
         return Err(ConversionError::NotABool);

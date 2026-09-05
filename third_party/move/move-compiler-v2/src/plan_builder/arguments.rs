@@ -38,71 +38,62 @@ pub(super) fn build_case_arguments(
     let param_names: BTreeSet<Symbol> =
         parameters.iter().map(|Parameter(var, _, _)| *var).collect();
 
-    // Check for unknown assignments (names not in the function parameter list).
     if let Attribute::Apply {
         attrs: inner_attrs, ..
     } = test_attribute
     {
         for inner in inner_attrs {
-            if let Attribute::Assign { name, node_id, .. } = inner {
-                if !param_names.contains(name) {
-                    let loc = env.get_node_loc(*node_id);
-                    env.diag_with_primary_and_labels(
-                        Severity::Warning,
-                        &loc,
-                        "unknown test parameter assignment",
-                        &format!("no parameter named `{}`", env.symbol_pool().string(*name)),
-                        vec![],
-                    );
-                }
+            let Attribute::Assign { name, node_id, .. } = inner else {
+                continue;
+            };
+            if param_names.contains(name) {
+                continue;
             }
+            let loc = env.get_node_loc(*node_id);
+            env.diag_with_primary_and_labels(
+                Severity::Warning,
+                &loc,
+                "unknown test parameter assignment",
+                &format!("no parameter named `{}`", env.symbol_pool().string(*name)),
+                vec![],
+            );
         }
     }
 
     let mut arguments = Vec::new();
-    for param in parameters {
-        let Parameter(var, ty, var_loc) = &param;
-
-        match test_annotation_params.get(var) {
-            Some(value) => match supported_param_type(ty) {
-                Some(target) => match to_move_value(value, &target, current_module, env) {
-                    Ok(move_value) => arguments.push(move_value),
-                    Err(err) => report_conversion_error(env, &test_attribute_loc, var_loc, err),
-                },
-                None => report_conversion_error(
-                    env,
-                    &test_attribute_loc,
-                    var_loc,
-                    ConversionError::UnsupportedParameterType,
-                ),
-            },
-            None => {
-                env.diag_with_primary_and_labels(
-                    Severity::Error,
-                    &test_attribute_loc,
-                    "unable to generate test: missing parameter assignment",
-                    "expected a parameter to be assigned in this attribute",
-                    vec![(
-                        var_loc.clone(),
-                        "corresponding to this parameter".to_string(),
-                    )],
-                );
-            },
+    for Parameter(var, ty, var_loc) in parameters {
+        let Some(value) = test_annotation_params.get(var) else {
+            env.diag_with_primary_and_labels(
+                Severity::Error,
+                &test_attribute_loc,
+                "unable to generate test: missing parameter assignment",
+                "expected a parameter to be assigned in this attribute",
+                vec![(
+                    var_loc.clone(),
+                    "corresponding to this parameter".to_string(),
+                )],
+            );
+            continue;
+        };
+        let Some(target) = supported_param_type(ty) else {
+            report_conversion_error(
+                env,
+                &test_attribute_loc,
+                var_loc,
+                ConversionError::UnsupportedParameterType,
+            );
+            continue;
+        };
+        match to_move_value(value, &target, current_module, env) {
+            Ok(move_value) => arguments.push(move_value),
+            Err(err) => report_conversion_error(env, &test_attribute_loc, var_loc, err),
         }
     }
     arguments
 }
 
-/// The `Type` a `#[test(...)]` assignment must be checked against for this declared parameter
-/// type, or `None` if `ty` is not a supported parameter type. Recurses through `Type::Vector` and
-/// `Type::Struct`'s type arguments so `vector<vector<u8>>` and `Wrapper<Wrapper<u8>>` are both
-/// supported to unbounded depth, the same as any other `vector<T>`/generic struct. Struct field
-/// types are not checked here (that needs `env`, which this function doesn't take); unsupported
-/// field types are rejected later, inside `to_move_value`'s `Pack` arm, per field.
-///
-/// `&signer` is the only reference type accepted, matching the one special case Move's own test
-/// harness constructs by reference. No other primitive is accepted by reference: `ty` being e.g.
-/// `&u8` is not a supported parameter type either, and neither is `vector<T>` behind a reference.
+/// Returns the conversion target for a supported parameter type. Signer references use a
+/// signer value; other references are rejected. Struct fields are checked during conversion.
 fn supported_param_type(ty: &Type) -> Option<Type> {
     match ty {
         Type::Primitive(p) => Some(Type::Primitive(*p)),
@@ -118,9 +109,7 @@ fn supported_param_type(ty: &Type) -> Option<Type> {
     }
 }
 
-/// Reports a `ConversionError` from `to_move_value` at the attribute's own location, labeling
-/// the specific parameter it was assigned to - the two-location pattern `build_case_arguments`
-/// already used for its "expected an address or signer" diagnostic before this layer.
+/// Reports a conversion error at the attribute, labeling the corresponding parameter.
 fn report_conversion_error(
     env: &GlobalEnv,
     test_attribute_loc: &Loc,
@@ -280,15 +269,13 @@ fn report_conversion_error(
     )]);
 }
 
-/// Recursively flattens a `#[test(...)]` attribute tree into a `param name -> value` map.
-///
-/// A repeated parameter assignment warns; the first assignment is retained and subsequent ones
-/// for the same name are ignored.
-fn parse_test_attribute(
+/// Collects parameter assignments from `#[test(...)]`, rejecting nested attributes.
+/// Repeated assignments warn and retain the first value.
+fn parse_test_attribute<'a>(
     env: &GlobalEnv,
-    test_attribute: &Attribute,
+    test_attribute: &'a Attribute,
     depth: usize,
-) -> Checked<BTreeMap<Symbol, AttributeValue>> {
+) -> Checked<BTreeMap<Symbol, &'a AttributeValue>> {
     match test_attribute {
         Attribute::Apply { node_id, .. } if depth > 0 => {
             let loc = env.get_node_loc(*node_id);
@@ -306,18 +293,20 @@ fn parse_test_attribute(
             );
             let mut seen: BTreeSet<Symbol> = BTreeSet::new();
             for inner in params {
-                if let Attribute::Assign { name, node_id, .. } = inner {
-                    if !seen.insert(*name) {
-                        let loc = env.get_node_loc(*node_id);
-                        env.diag_with_primary_and_labels(
-                            Severity::Warning,
-                            &loc,
-                            "a test parameter may only be assigned once",
-                            "extra occurrence here",
-                            vec![],
-                        );
-                    }
+                let Attribute::Assign { name, node_id, .. } = inner else {
+                    continue;
+                };
+                if seen.insert(*name) {
+                    continue;
                 }
+                let loc = env.get_node_loc(*node_id);
+                env.diag_with_primary_and_labels(
+                    Severity::Warning,
+                    &loc,
+                    "a test parameter may only be assigned once",
+                    "extra occurrence here",
+                    vec![],
+                );
             }
             let mut combined = BTreeMap::new();
             for attr in params {
@@ -340,7 +329,7 @@ fn parse_test_attribute(
                 return Err(ErrorReported);
             }
             let mut args = BTreeMap::new();
-            args.insert(*name, value.clone());
+            args.insert(*name, value);
             Ok(args)
         },
     }

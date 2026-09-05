@@ -3,10 +3,7 @@
 // Parts of the file are Copyright (c) Aptos Foundation
 // All Aptos Foundation code and content is licensed pursuant to the Innovation-Enabling Source Code License, available at https://github.com/aptos-labs/aptos-core/blob/main/LICENSE
 
-//! Resolves a test attribute's named-constant reference (`AttributeValue::Name`) to its
-//! declared value and type. No visibility check: a `const`'s value carries no invariant to
-//! protect the way a struct's `Pack` does, and the common case is reading another module's
-//! private error/abort-code constants.
+//! Resolves named constants in test arguments, including private constants in other modules.
 
 use super::{convert::ConversionError, module_lookup::resolve_module_env};
 use move_model::{

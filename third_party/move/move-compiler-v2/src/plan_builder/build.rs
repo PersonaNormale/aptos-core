@@ -21,27 +21,19 @@ pub(super) fn build_test_info(
     let fn_name_str = function.get_name_str();
     let raw_cases = collect_and_validate_test_cases(env, current_module, &function);
 
-    if raw_cases.len() == 1 {
-        let raw_case = raw_cases
-            .into_iter()
-            .next()
-            .expect("raw_cases.len() == 1 checked above");
-        let arguments = build_case_arguments(env, &raw_case, &function, current_module);
-        let test_case = TestCase {
-            function_name: fn_name_str.clone(),
-            arguments,
-            expected_failure: raw_case.expected_failure,
-        };
-        return vec![(fn_name_str, test_case)];
-    }
+    let single_case = raw_cases.len() == 1;
 
     raw_cases
         .into_iter()
         .map(|raw_case| {
             let arguments = build_case_arguments(env, &raw_case, &function, current_module);
-            let case_name = format!("{}@case{}", fn_name_str, raw_case.index);
+            let case_name = if single_case {
+                fn_name_str.clone()
+            } else {
+                format!("{}@case{}", fn_name_str, raw_case.index)
+            };
             let test_case = TestCase {
-                function_name: fn_name_str.to_string(),
+                function_name: fn_name_str.clone(),
                 arguments,
                 expected_failure: raw_case.expected_failure,
             };

@@ -89,7 +89,7 @@ fn resolve_failure_kind(
             let (_value_name_loc, attr_value) =
                 expect_assigned_value(env, TestingAttribute::ABORT_CODE_NAME, attr)?;
             let (value_loc, opt_const_module_id, u) =
-                resolve_u64_constant_or_literal(env, current_module, &attr_value)?;
+                resolve_u64_constant_or_literal(env, current_module, attr_value)?;
             let location = if let Some(location_attr) = location_opt {
                 resolve_location(env, location_attr)?
             } else if let Some(location) = opt_const_module_id {
@@ -146,7 +146,7 @@ fn resolve_failure_kind(
             let (value_name_loc, attr_value) =
                 expect_assigned_value(env, TestingAttribute::MAJOR_STATUS_NAME, attr)?;
             let (major_value_loc, _, major_status_u64) =
-                resolve_u64_constant_or_literal(env, current_module, &attr_value)?;
+                resolve_u64_constant_or_literal(env, current_module, attr_value)?;
             let major_status = StatusCode::try_from(major_status_u64).map_err(|_| {
                 env.error_with_labels(
                     &value_name_loc,
@@ -206,13 +206,13 @@ fn resolve_optional_minor_status(
     };
     let (_minor_value_loc, minor_value) =
         expect_assigned_value(env, TestingAttribute::MINOR_STATUS_NAME, minor_attr)?;
-    let (_, _, minor_status) = resolve_u64_constant_or_literal(env, current_module, &minor_value)?;
+    let (_, _, minor_status) = resolve_u64_constant_or_literal(env, current_module, minor_value)?;
     Ok(Some(minor_status))
 }
 
 /// One variant per `TestingAttribute::expected_failure_cases()` entry.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ExpectedFailureKind {
+#[derive(Clone, Copy)]
+enum ExpectedFailureKind {
     AbortCode,
     ArithmeticError,
     OutOfGas,
@@ -229,7 +229,7 @@ impl ExpectedFailureKind {
         ExpectedFailureKind::MajorStatus,
     ];
 
-    pub(super) fn attr_name(self) -> &'static str {
+    fn attr_name(self) -> &'static str {
         match self {
             ExpectedFailureKind::AbortCode => TestingAttribute::ABORT_CODE_NAME,
             ExpectedFailureKind::ArithmeticError => TestingAttribute::ARITHMETIC_ERROR_NAME,
@@ -242,7 +242,7 @@ impl ExpectedFailureKind {
 
 /// Picks the single failure-kind sub-attribute out of `attrs`, erroring if the count isn't
 /// exactly 1.
-pub(super) fn resolve_expected_failure_kind<'a>(
+fn resolve_expected_failure_kind<'a>(
     env: &GlobalEnv,
     attr_loc: Loc,
     attrs: &mut BTreeMap<String, &'a Attribute>,
@@ -261,9 +261,7 @@ pub(super) fn resolve_expected_failure_kind<'a>(
         );
         let note = format!(
             "expected one of: {}",
-            TestingAttribute::expected_failure_cases()
-                .to_vec()
-                .join(", ")
+            TestingAttribute::expected_failure_cases().join(", ")
         );
         env.diag_with_notes(Severity::Error, &attr_loc, &msg, vec![note]);
         return Err(ErrorReported);
@@ -273,11 +271,7 @@ pub(super) fn resolve_expected_failure_kind<'a>(
 
 /// Errors if `attr` carries any `(...)` parameters. Some failure kinds, such as `out_of_gas`,
 /// are markers and take none.
-pub(super) fn ensure_no_attribute_params(
-    env: &GlobalEnv,
-    kind: &str,
-    attr: &Attribute,
-) -> Checked<()> {
+fn ensure_no_attribute_params(env: &GlobalEnv, kind: &str, attr: &Attribute) -> Checked<()> {
     match attr {
         Attribute::Apply {
             node_id,
@@ -305,11 +299,11 @@ pub(super) fn ensure_no_attribute_params(
 
 /// Errors unless `attr` is `kind = <value>`, otherwise returns the assignment's location and
 /// value.
-pub(super) fn expect_assigned_value(
+fn expect_assigned_value<'a>(
     env: &GlobalEnv,
     kind: &str,
-    attr: &Attribute,
-) -> Checked<(Loc, AttributeValue)> {
+    attr: &'a Attribute,
+) -> Checked<(Loc, &'a AttributeValue)> {
     match attr {
         Attribute::Assign {
             node_id,
@@ -319,7 +313,7 @@ pub(super) fn expect_assigned_value(
         } => {
             assert!(env.symbol_pool().string(*name).to_string() == kind);
             let loc = env.get_node_loc(*node_id);
-            Ok((loc, value.clone()))
+            Ok((loc, value))
         },
         Attribute::Apply { node_id, .. } => {
             let loc = env.get_node_loc(*node_id);
@@ -330,12 +324,12 @@ pub(super) fn expect_assigned_value(
 }
 
 /// Resolves `location = <module>` into the `ModuleId` it names.
-pub(super) fn resolve_location(env: &GlobalEnv, attr: &Attribute) -> Checked<ModuleId> {
+fn resolve_location(env: &GlobalEnv, attr: &Attribute) -> Checked<ModuleId> {
     let (loc, value) = expect_assigned_value(env, TestingAttribute::ERROR_LOCATION, attr)?;
     match value {
         AttributeValue::Name(id, opt_module_name, sym) => {
-            let vloc = env.get_node_loc(id);
-            let module_id_opt = resolve_module_id(env, opt_module_name);
+            let vloc = env.get_node_loc(*id);
+            let module_id_opt = resolve_module_id(env, opt_module_name.as_ref());
             if !sym.display(env.symbol_pool()).to_string().is_empty() || module_id_opt.is_none() {
                 env.error_with_labels(&loc, "invalid attribute value", vec![(
                     vloc,
@@ -347,7 +341,7 @@ pub(super) fn resolve_location(env: &GlobalEnv, attr: &Attribute) -> Checked<Mod
         AttributeValue::Value(id, _)
         | AttributeValue::Vector(id, ..)
         | AttributeValue::Pack(id, ..) => {
-            let vloc = env.get_node_loc(id);
+            let vloc = env.get_node_loc(*id);
             env.error_with_labels(&loc, "invalid attribute value", vec![(
                 vloc,
                 "expected a module identifier, e.g. `std::vector`".to_string(),
@@ -359,7 +353,7 @@ pub(super) fn resolve_location(env: &GlobalEnv, attr: &Attribute) -> Checked<Mod
 
 /// Resolves an `abort_code`/`minor_status` payload: either a `u64` literal, or a path to a
 /// `u64` module constant.
-pub(super) fn resolve_u64_constant_or_literal(
+fn resolve_u64_constant_or_literal(
     env: &GlobalEnv,
     current_module: &ModuleName,
     value: &AttributeValue,
@@ -374,7 +368,7 @@ pub(super) fn resolve_u64_constant_or_literal(
             let vloc = env.get_node_loc(*id);
             let (module_name, ty, value) =
                 resolve_named_constant(env, current_module, opt_module_name, *member, &vloc)?;
-            let mod_id = resolve_module_id(env, opt_module_name.clone());
+            let mod_id = resolve_module_id(env, opt_module_name.as_ref());
             let u = constant_value_to_u64(env, &vloc, &module_name, *member, ty, value)?;
             Ok((vloc, mod_id, u))
         },
@@ -488,7 +482,7 @@ fn constant_value_to_u64(
     }
 }
 
-fn resolve_module_id(env: &GlobalEnv, module: Option<ModuleName>) -> Option<ModuleId> {
+fn resolve_module_id(env: &GlobalEnv, module: Option<&ModuleName>) -> Option<ModuleId> {
     let module_name = module?;
     let addr = module_name.addr();
     let sym = module_name.name();
@@ -514,7 +508,7 @@ fn literal_value_to_u64(env: &GlobalEnv, loc: Loc, value: &Value) -> Checked<(Lo
 }
 
 /// Errors if `location` is absent, otherwise unwraps it.
-pub(super) fn require_location_attr<T>(
+fn require_location_attr<T>(
     env: &GlobalEnv,
     loc: Loc,
     attr: &str,

@@ -938,14 +938,8 @@ fn unit_variant_explicit_empty_parens_and_braces_agree() {
     let module = plan.module_tests.values().next().unwrap();
 
     let expected = vec![MoveValue::Struct(MoveStruct::new_variant(0, vec![]))];
-    assert_eq!(
-        module.tests.get("bare").unwrap().arguments,
-        expected.clone()
-    );
-    assert_eq!(
-        module.tests.get("parens").unwrap().arguments,
-        expected.clone()
-    );
+    assert_eq!(module.tests.get("bare").unwrap().arguments, expected);
+    assert_eq!(module.tests.get("parens").unwrap().arguments, expected);
     assert_eq!(module.tests.get("braces").unwrap().arguments, expected);
 }
 
