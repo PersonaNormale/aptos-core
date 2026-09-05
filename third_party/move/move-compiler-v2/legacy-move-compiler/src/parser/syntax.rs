@@ -678,11 +678,13 @@ fn parse_visibility(context: &mut Context) -> Result<Visibility, Box<Diagnostic>
     })
 }
 
-// Parse an attribute value. Either a value literal, a module access, or a vector literal
+// Parse a literal, module access, vector, or struct/variant construction in an attribute.
 //      AttributeValue =
 //          <Value>
 //          | <NameAccessChain>
 //          | "vector" ('<' Type '>')? "[" Comma<AttributeValue> "]"
+//          | <NameAccessChain> ('<' Comma<Type> '>')? "{" Comma<AttributeField> "}"
+//          | <NameAccessChain> ('<' Comma<Type> '>')? "(" Comma<AttributeValue> ")"
 fn parse_attribute_value(context: &mut Context) -> Result<AttributeValue, Box<Diagnostic>> {
     const VECTOR_IDENT: &str = "vector";
 
@@ -736,9 +738,7 @@ fn parse_attribute_value(context: &mut Context) -> Result<AttributeValue, Box<Di
         return Ok(sp(loc, AttributeValue_::Vector(ty, elems)));
     }
 
-    // Attribute-value grammar has no `a < b` boolean-operator reading to disambiguate against
-    // (unlike ordinary expressions), so unlike `parse_name_exp`, optional type args can always be
-    // attempted immediately after the name with no same-line lookahead guard.
+    // Attribute values have no comparison operators, so `<` always starts type arguments.
     let start_loc = context.tokens.start_loc();
     let ma = parse_name_access_chain(context, false, || "attribute name value")?;
     let targs_start_loc = context.tokens.start_loc();
@@ -792,9 +792,7 @@ fn parse_attribute_value(context: &mut Context) -> Result<AttributeValue, Box<Di
     }
 }
 
-// Parse a struct-literal field inside an attribute value: `<Field> ":" <AttributeValue>`.
-// Unlike `parse_exp_field`, the colon is not optional: there is no local variable an
-// attribute-position field name could shorthand-reference.
+// Parse an attribute field: `<Field> ":" <AttributeValue>`. Local-variable shorthand is unavailable.
 fn parse_attribute_value_field(
     context: &mut Context,
 ) -> Result<(Field, AttributeValue), Box<Diagnostic>> {
@@ -929,11 +927,8 @@ fn parse_typed_bind(context: &mut Context) -> Result<TypedBind, Box<Diagnostic>>
     ))
 }
 
-// Recognizes a `-`-prefixed numeric literal (`-5`, `-5u8`) by delegating the numeral itself to
-// `maybe_parse_value`, then folding the sign into its text. Returns `Ok(None)` if `Minus` is not
-// followed by a numeral standing alone, e.g. `-0x1::module`, where `NumValue` continues into a
-// `::` access, leaving the token stream untouched so the caller falls back to its own handling.
-// Assumes the caller has already confirmed `context.tokens.peek() == Tok::Minus`.
+// Called at `-`. Parses a negative numeral, or leaves tokens untouched and returns `None`
+// for other forms, including module accesses such as `-0x1::module`.
 fn maybe_parse_negative_num_literal(
     context: &mut Context,
 ) -> Result<Option<Value>, Box<Diagnostic>> {

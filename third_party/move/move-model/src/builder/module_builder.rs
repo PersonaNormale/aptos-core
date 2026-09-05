@@ -437,10 +437,7 @@ impl ModuleBuilder<'_, '_> {
         )
     }
 
-    /// Translates one `EA::AttributeValue` node, recursively. Every nesting level gets its own
-    /// `NodeId`, the same way a single suffixed scalar (`5u8`) gets its own node today: this is
-    /// what lets an explicit `vector<u16>[...]` annotation, or a suffixed element nested inside a
-    /// vector, carry its own type down to conversion time independently of its siblings.
+    /// Translates an attribute value recursively, retaining each nested value's type information.
     fn translate_attribute_value(&mut self, av: &EA::AttributeValue) -> AttributeValue {
         let value_node_id = self
             .parent
@@ -479,10 +476,7 @@ impl ModuleBuilder<'_, '_> {
                     self.symbol_pool().make(n.value.as_str()),
                 ),
                 EA::ModuleAccess_::ModuleAccess(mident, n, Some(variant)) => {
-                    // A bare `Enum::Variant`, with no following `{`/`(`, is sugar for `Enum::Variant()`.
-                    // `check_no_variant_and_convert_maccess` exists for a different ambiguity
-                    // (spec-schema/const disambiguation) and hard-errors on any variant unconditionally,
-                    // so it is deliberately not called here.
+                    // A bare `Enum::Variant` is shorthand for `Enum::Variant()`.
                     let loc = self.parent.to_loc(&macc.loc);
                     let module_name = self.resolve_module_name(&loc, &mident);
                     AttributeValue::Pack(
@@ -495,7 +489,6 @@ impl ModuleBuilder<'_, '_> {
                     )
                 },
                 EA::ModuleAccess_::ModuleAccess(mident, n, None) => {
-                    let (_, macc) = self.check_no_variant_and_convert_maccess(macc);
                     let loc = self.parent.to_loc(&macc.loc);
                     let module_name = self.resolve_module_name(&loc, &mident);
                     AttributeValue::Name(

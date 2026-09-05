@@ -74,7 +74,7 @@ fn construct_module_test_plan(
     let current_module = module.get_name();
     let tests: BTreeMap<_, _> = module
         .get_functions()
-        .flat_map(|func| build_test_info(env, current_module, func).into_iter())
+        .flat_map(|func| build_test_info(env, current_module, func))
         .collect();
 
     if tests.is_empty() {

@@ -10,9 +10,6 @@ use crate::{
     resource_provider::InMemoryResourceProvider,
 };
 use aptos_types::on_chain_config::{Features, OnChainConfig};
-use legacy_move_compiler::unit_test::{
-    ExpectedFailure, ExpectedMoveError, NamedOrBytecodeModule, TestCase,
-};
 use mono_move_core::{types::EMPTY_TYPE_LIST, Function, GasMeter, Interner, VMInternalError};
 use mono_move_global_context::{ExecutionGuard, GlobalContext};
 use mono_move_loader::{Loader, LoaderError, LoadingPolicy, LoweringPolicy, ModuleReadSet};
@@ -20,6 +17,9 @@ use mono_move_runtime::{
     InterpreterContext, ProductionNativeRegistry, RuntimeError, RuntimeStatus,
 };
 use move_binary_format::{errors::Location, CompiledModule};
+use move_compiler_v2::plan_builder::{
+    ExpectedFailure, ExpectedMoveError, NamedOrBytecodeModule, TestCase,
+};
 use move_core_types::{
     identifier::IdentStr,
     language_storage::ModuleId,
@@ -159,7 +159,7 @@ fn execute(
         .intern_address_name(module_id.address(), module_id.name())
         .into_global_arena_ptr();
     let func = guard
-        .intern_identifier(IdentStr::new(&test.test_name).unwrap())
+        .intern_identifier(IdentStr::new(&test.function_name).unwrap())
         .into_global_arena_ptr();
 
     let mut read_set = ModuleReadSet::new();

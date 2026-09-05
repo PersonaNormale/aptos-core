@@ -9,11 +9,12 @@ use super::super::{
 };
 use move_compiler_v2::env_pipeline::lambda_lifter::is_lambda_lifted_fun as is_lambda_lifted;
 use move_model::{
-    ast::{Attribute, AttributeValue, ExpData, Operation},
+    ast::{Attribute, AttributeValue, ExpData, ModuleName, Operation, PackFields},
     model::{
         FunId, FunctionEnv, GlobalEnv, Loc, ModuleEnv, NamedConstantEnv, QualifiedId, StructEnv,
         TypeParameter, Visibility,
     },
+    symbol::Symbol,
     ty::{ReferenceKind, TypeDisplayContext},
 };
 use rmcp::{
@@ -666,32 +667,87 @@ fn attrs_to_facts(env: &GlobalEnv, attrs: &[Attribute]) -> Vec<AttributeFacts> {
 fn attr_to_facts(env: &GlobalEnv, attr: &Attribute) -> AttributeFacts {
     let symbol_pool = env.symbol_pool();
     match attr {
-        Attribute::Apply(_, name, sub) => AttributeFacts {
+        Attribute::Apply { name, attrs, .. } => AttributeFacts {
             name: symbol_pool.string(*name).to_string(),
             value: None,
-            args: sub.iter().map(|a| attr_to_facts(env, a)).collect(),
+            args: attrs.iter().map(|a| attr_to_facts(env, a)).collect(),
         },
-        Attribute::Assign(_, name, val) => AttributeFacts {
+        Attribute::Assign { name, value, .. } => AttributeFacts {
             name: symbol_pool.string(*name).to_string(),
-            value: Some(attr_value_to_string(env, val)),
+            value: Some(attr_value_to_string(env, value)),
             args: vec![],
         },
     }
 }
 
 /// Render an attribute value: literals via the model's value display, named
-/// paths as fully-qualified `address::module::name` (or a bare name).
+/// paths as fully-qualified `address::module::name` (or a bare name), and
+/// vectors and struct packs in their Move source syntax.
 fn attr_value_to_string(env: &GlobalEnv, val: &AttributeValue) -> String {
     match val {
         AttributeValue::Value(_, v) => env.display(v).to_string(),
-        AttributeValue::Name(_, module_opt, sym) => {
-            let name = sym.display(env.symbol_pool()).to_string();
-            match module_opt {
-                Some(module) => format!("{}::{}", module.display_full(env), name),
-                None => name,
+        AttributeValue::Name(_, module_opt, sym) => qualified_name(env, module_opt.as_ref(), *sym),
+        AttributeValue::Vector(_, elem_ty, elems) => {
+            let elems = join_attr_values(env, elems);
+            match elem_ty {
+                Some(ty) => {
+                    let tctx = TypeDisplayContext::new(env);
+                    format!("vector<{}>[{}]", ty.display(&tctx), elems)
+                },
+                None => format!("vector[{}]", elems),
+            }
+        },
+        AttributeValue::Pack(_, module_opt, name, variant, type_args, fields) => {
+            let mut head = qualified_name(env, module_opt.as_ref(), *name);
+            if let Some(tys) = type_args {
+                let tctx = TypeDisplayContext::new(env);
+                let tys = tys
+                    .iter()
+                    .map(|ty| ty.display(&tctx).to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                head = format!("{}<{}>", head, tys);
+            }
+            if let Some(variant) = variant {
+                head = format!("{}::{}", head, variant.display(env.symbol_pool()));
+            }
+            match fields {
+                PackFields::Named(named) => {
+                    let fields = named
+                        .iter()
+                        .map(|(sym, v)| {
+                            format!(
+                                "{}: {}",
+                                sym.display(env.symbol_pool()),
+                                attr_value_to_string(env, v)
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{} {{ {} }}", head, fields)
+                },
+                PackFields::Positional(positional) => {
+                    format!("{}({})", head, join_attr_values(env, positional))
+                },
             }
         },
     }
+}
+
+/// Render `sym` prefixed with its fully-qualified module path, when it has one.
+fn qualified_name(env: &GlobalEnv, module_opt: Option<&ModuleName>, sym: Symbol) -> String {
+    let name = sym.display(env.symbol_pool()).to_string();
+    match module_opt {
+        Some(module) => format!("{}::{}", module.display_full(env), name),
+        None => name,
+    }
+}
+
+fn join_attr_values(env: &GlobalEnv, vals: &[AttributeValue]) -> String {
+    vals.iter()
+        .map(|v| attr_value_to_string(env, v))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn visibility_str(func: &FunctionEnv<'_>) -> String {

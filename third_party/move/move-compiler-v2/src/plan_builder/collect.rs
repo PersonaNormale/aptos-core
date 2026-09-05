@@ -3,8 +3,7 @@
 // Parts of the file are Copyright (c) Aptos Foundation
 // All Aptos Foundation code and content is licensed pursuant to the Innovation-Enabling Source Code License, available at https://github.com/aptos-labs/aptos-core/blob/main/LICENSE
 
-//! Groups a function's `#[test]`/`#[expected_failure]` attributes into one `RawTestCase` per
-//! `#[test(...)]` attribute, and validates every cross-case invariant along the way.
+//! Groups and validates a function's test cases and their expected failures.
 
 use super::{failure::parse_failure_attribute, test_plan::ExpectedFailure};
 use codespan_reporting::diagnostic::Severity;
@@ -23,22 +22,12 @@ pub(super) struct RawTestCase<'a> {
     pub(super) expected_failure: Option<ExpectedFailure>,
 }
 
-/// The `#[test]`/`#[expected_failure]`/other attributes sharing one `#[...]` block. Never
-/// leaves this module.
+/// Attributes sharing one `#[...]` block.
+#[derive(Default)]
 struct TestAttribute<'a> {
     tests: Vec<&'a Attribute>,
     failures: Vec<&'a Attribute>,
     others: Vec<&'a Attribute>,
-}
-
-impl<'a> TestAttribute<'a> {
-    fn empty() -> Self {
-        TestAttribute {
-            tests: Vec::new(),
-            failures: Vec::new(),
-            others: Vec::new(),
-        }
-    }
 }
 
 /// Result of one pass over a function's attributes: the `#[...]` blocks that contain a
@@ -68,9 +57,7 @@ fn collect_test_attributes<'a>(
         if attr.name() == test_only_name {
             test_only = Some(attr);
         }
-        let entry = test_groups
-            .entry(attr.attribute_sibling_id())
-            .or_insert_with(TestAttribute::empty);
+        let entry = test_groups.entry(attr.attribute_sibling_id()).or_default();
         if attr.name() == test_name {
             entry.tests.push(attr);
         } else if attr.name() == ef_name {
@@ -79,8 +66,6 @@ fn collect_test_attributes<'a>(
             entry.others.push(attr);
         }
     }
-    // Keep only attributes that contain at least one #[test].
-    // Attributes with only #[expected_failure] or other attrs are not test attributes.
     test_groups.retain(|_, a| !a.tests.is_empty());
     ClassifiedAttributes {
         test_groups,
@@ -89,8 +74,7 @@ fn collect_test_attributes<'a>(
     }
 }
 
-/// Owns every cross-case invariant for one function's test attributes, from case validity
-/// through zero-arg distinctness.
+/// Collects test cases after validating their attribute groups.
 pub(super) fn collect_and_validate_test_cases<'a>(
     env: &GlobalEnv,
     current_module: &ModuleName,
@@ -104,7 +88,6 @@ pub(super) fn collect_and_validate_test_cases<'a>(
     } = collect_test_attributes(env, attrs);
 
     if test_groups.is_empty() {
-        // Not a test function. #[expected_failure] on a non-test function is an error.
         if let Some(abort_attribute) = all_failures.first() {
             let fn_id_loc = function.get_id_loc();
             let fn_msg = "only functions defined as a test with `#[test]` can also have an \
@@ -170,9 +153,7 @@ fn validate_test_attributes(
         }
     }
 
-    // Structural checks: per-attribute invariants.
     for attribute in attributes.values() {
-        // Exactly one #[test] per test attribute.
         if attribute.tests.len() > 1 {
             let loc = env.get_node_loc(attribute.tests[1].node_id());
             env.diag_with_primary_and_labels(
@@ -184,7 +165,6 @@ fn validate_test_attributes(
             );
             has_error = true;
         }
-        // No unrelated siblings alongside #[test].
         for sibling in &attribute.others {
             let loc = env.get_node_loc(sibling.node_id());
             env.diag_with_primary_and_labels(
@@ -197,9 +177,7 @@ fn validate_test_attributes(
         }
     }
 
-    // EF ownership checks.
     if single_case {
-        // Single case: total #[expected_failure] count (attribute-local + standalone) must be <= 1.
         if all_failure_attrs.len() > 1 {
             let loc = env.get_node_loc(all_failure_attrs[1].node_id());
             env.diag_with_primary_and_labels(
@@ -212,7 +190,7 @@ fn validate_test_attributes(
             has_error = true;
         }
     } else {
-        // Multi case: standalone (orphan) top-level EF is dropped with a warning.
+        // A standalone expected failure has no case to apply to when there are multiple cases.
         for failure in all_failure_attrs {
             if !attributes.contains_key(&failure.attribute_sibling_id()) {
                 let loc = env.get_node_loc(failure.node_id());
@@ -229,7 +207,6 @@ fn validate_test_attributes(
                 );
             }
         }
-        // Per attribute: at most one #[expected_failure] per test attribute.
         for attribute in attributes.values() {
             for extra in attribute.failures.iter().skip(1) {
                 let loc = env.get_node_loc(extra.node_id());
@@ -269,22 +246,14 @@ fn build_raw_test_cases<'a>(
         .values()
         .enumerate()
         .map(|(index, attribute)| {
-            // Single case: attribute.failures.len() is 0 or 1 (guaranteed, else rejected above).
-            // Multi case: may exceed 1 (warned, not rejected); only the first survives.
-            let expected_failure_attr = if let Some(ef) = attribute.failures.first() {
-                Some(*ef)
-            } else if single_case {
-                standalone_failure
-            } else {
-                None
-            };
+            // Extra expected failures have already been diagnosed; keep only the first.
+            let expected_failure_attr = attribute.failures.first().copied().or(standalone_failure);
             (index, attribute.tests[0], expected_failure_attr)
         })
         .collect()
 }
 
-/// Warns when a zero-argument parametric test has multiple cases that are indistinguishable at
-/// runtime, since none of them carry a differentiating `#[expected_failure]`.
+/// Warns when zero-argument cases repeat the same expected failure.
 fn check_zero_arg_distinctness(env: &GlobalEnv, function: &FunctionEnv, raw_cases: &[RawTestCase]) {
     if raw_cases.len() <= 1 || !function.get_parameters_ref().is_empty() {
         return;
@@ -294,10 +263,7 @@ fn check_zero_arg_distinctness(env: &GlobalEnv, function: &FunctionEnv, raw_case
         .map(|case| &case.expected_failure)
         .collect();
     if distinct.len() < raw_cases.len() {
-        let Some(first) = raw_cases.first() else {
-            return;
-        };
-        let loc = env.get_node_loc(first.attr.node_id());
+        let loc = env.get_node_loc(raw_cases[0].attr.node_id());
         env.diag_with_primary_and_labels(
             Severity::Warning,
             &loc,

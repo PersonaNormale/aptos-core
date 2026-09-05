@@ -3,10 +3,7 @@
 // Parts of the file are Copyright (c) Aptos Foundation
 // All Aptos Foundation code and content is licensed pursuant to the Innovation-Enabling Source Code License, available at https://github.com/aptos-labs/aptos-core/blob/main/LICENSE
 
-//! Converts a `#[test(...)]`/`#[expected_failure(...)]` struct- or enum-variant-literal payload
-//! (`AttributeValue::Pack`) into a `MoveValue`, including the allowlisted `option::none`/
-//! `option::some` constructors recognized in place of a field literal, since `Option` is not
-//! declared `public`.
+//! Converts struct and enum literals and supported `Option` constructor calls in test arguments.
 
 use super::{
     convert::{to_move_value, ConversionError},
@@ -22,12 +19,9 @@ use move_model::{
     symbol::Symbol,
     ty::Type,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-/// The `Pack` counterpart of `to_move_value`: resolves struct-or-enum identity, checks
-/// visibility and type-argument agreement, checks field completeness, and recurses per field.
-/// `variant` is `Some` for an enum-variant literal (`Enum::Variant(..)`/`Enum::Variant{..}`) and
-/// `None` for a plain struct literal.
+/// Resolves a struct or enum literal, checks construction rules, and converts its fields.
 pub(super) fn to_move_struct(
     opt_module: &Option<ModuleName>,
     name: Symbol,
@@ -68,9 +62,6 @@ pub(super) fn to_move_struct(
         });
     }
 
-    // A syntactically valid `Pack` chain can carry a variant independently of whether the
-    // resolved target actually has one, so every combination is handled explicitly rather than
-    // guarding on `has_variants()` alone.
     let (variant_tag, declared_fields, is_empty) = match (struct_env.has_variants(), variant) {
         (false, None) => (
             None,
@@ -120,11 +111,7 @@ pub(super) fn to_move_struct(
     )
 }
 
-/// The field-conversion tail shared by an ordinary struct/enum-variant literal
-/// (`to_move_struct`) and an allowlisted constructor call (`build_constructor_call`). Takes
-/// the variant/field identity the caller has already resolved and never checks construction
-/// visibility itself: `to_move_struct` checks it before calling in; `build_constructor_call`
-/// never needs to.
+/// Converts fields of a resolved struct or variant whose construction visibility was checked.
 fn build_struct_or_variant_value(
     variant_tag: Option<VariantIndex>,
     declared_fields: Vec<FieldEnv>,
@@ -137,19 +124,27 @@ fn build_struct_or_variant_value(
     current_module: &ModuleName,
     env: &GlobalEnv,
 ) -> Result<MoveValue, ConversionError> {
-    let effective_args: Vec<Type> = match opt_type_args {
-        Some(explicit) if explicit != target_args => {
+    if let Some(explicit) = opt_type_args {
+        if explicit != target_args {
             return Err(ConversionError::TypeMismatch {
                 declared: Type::Struct(target_mid, target_sid, explicit.clone()),
             });
-        },
-        _ => target_args.to_vec(),
-    };
+        }
+    }
 
-    let is_positional = declared_fields
-        .first()
-        .map(|f| f.is_positional())
-        .unwrap_or(false);
+    let no_fields = match fields {
+        PackFields::Named(named) => named.is_empty(),
+        PackFields::Positional(positional) => positional.is_empty(),
+    };
+    if is_empty && no_fields {
+        // Empty structs have a dummy boolean field in bytecode; empty variants have no fields.
+        return Ok(match variant_tag {
+            Some(tag) => MoveValue::Struct(MoveStruct::new_variant(tag, vec![])),
+            None => MoveValue::Struct(MoveStruct::new(vec![MoveValue::Bool(false)])),
+        });
+    }
+
+    let is_positional = declared_fields.first().is_some_and(|f| f.is_positional());
 
     let build = |values: Vec<MoveValue>| match variant_tag {
         Some(tag) => MoveValue::Struct(MoveStruct::new_variant(tag, values)),
@@ -158,12 +153,6 @@ fn build_struct_or_variant_value(
 
     match fields {
         PackFields::Named(named) => {
-            if is_empty && named.is_empty() {
-                return Ok(match variant_tag {
-                    Some(tag) => MoveValue::Struct(MoveStruct::new_variant(tag, vec![])),
-                    None => MoveValue::Struct(MoveStruct::new(vec![MoveValue::Bool(false)])),
-                });
-            }
             if is_positional {
                 return Err(ConversionError::ConstructorMismatch {
                     expected_positional: true,
@@ -182,7 +171,7 @@ fn build_struct_or_variant_value(
             if !missing.is_empty() {
                 return Err(ConversionError::MissingFields(missing));
             }
-            let declared_names: std::collections::BTreeSet<Symbol> =
+            let declared_names: BTreeSet<Symbol> =
                 declared_fields.iter().map(|f| f.get_name()).collect();
             if let Some((unknown, _)) = named.iter().find(|(s, _)| !declared_names.contains(s)) {
                 return Err(ConversionError::UnknownField(*unknown));
@@ -192,7 +181,7 @@ fn build_struct_or_variant_value(
                 .map(|(field, v)| {
                     to_move_value(
                         v,
-                        &field.get_type().instantiate(&effective_args),
+                        &field.get_type().instantiate(target_args),
                         current_module,
                         env,
                     )
@@ -201,12 +190,6 @@ fn build_struct_or_variant_value(
             Ok(build(converted))
         },
         PackFields::Positional(positional) => {
-            if is_empty && positional.is_empty() {
-                return Ok(match variant_tag {
-                    Some(tag) => MoveValue::Struct(MoveStruct::new_variant(tag, vec![])),
-                    None => MoveValue::Struct(MoveStruct::new(vec![MoveValue::Bool(false)])),
-                });
-            }
             if !is_positional {
                 return Err(ConversionError::ConstructorMismatch {
                     expected_positional: false,
@@ -224,7 +207,7 @@ fn build_struct_or_variant_value(
                 .map(|(field, v)| {
                     to_move_value(
                         v,
-                        &field.get_type().instantiate(&effective_args),
+                        &field.get_type().instantiate(target_args),
                         current_module,
                         env,
                     )
@@ -235,18 +218,14 @@ fn build_struct_or_variant_value(
     }
 }
 
-/// The `Option` functions recognized in attribute-call position, in place of a field literal,
-/// since `Option` is not declared `public`.
+/// Supported `Option` constructor functions in test arguments.
 #[derive(Clone, Copy)]
 enum ConstructorKind {
     OptionNone,
     OptionSome,
 }
 
-/// Whether `func_env` is one of the allowlisted constructors, checked by module and function
-/// identity, not by resolved struct/enum identity: at the point this is called, `name` has
-/// already failed to resolve as a struct, so there is no struct/enum to identity-check against
-/// yet.
+/// Recognizes constructors by their defining module and function name.
 fn allowlisted_constructor(func_env: &FunctionEnv) -> Option<ConstructorKind> {
     if !func_env.module_env.is_option() {
         return None;
@@ -258,9 +237,7 @@ fn allowlisted_constructor(func_env: &FunctionEnv) -> Option<ConstructorKind> {
     }
 }
 
-/// Builds an `Option` value directly from an already-converted payload. `option::none`/
-/// `option::some` know their variant from the constructor name alone. Handles both the
-/// framework's enum-declared `Option` and the legacy struct-declared copy.
+/// Builds either the enum or legacy vector-backed representation of `Option`.
 fn wrap_in_option(struct_env: &StructEnv, payload: Option<MoveValue>) -> MoveValue {
     if struct_env.has_variants() {
         let (name, values) = match payload {
@@ -277,10 +254,7 @@ fn wrap_in_option(struct_env: &StructEnv, payload: Option<MoveValue>) -> MoveVal
     }
 }
 
-/// Lowers a call to an allowlisted `Option` constructor into the `MoveValue` a hand-written
-/// literal for that constructor would need, reading the real field layout off the resolved
-/// function's own return type so the result stays correct whether `Option` is declared as the
-/// legacy `vec`-field struct or the current enum.
+/// Converts an `Option` constructor call using the constructor's return type.
 fn build_constructor_call(
     func_env: &FunctionEnv,
     kind: ConstructorKind,
@@ -334,12 +308,8 @@ fn build_constructor_call(
     }
 }
 
-/// Attribute-driven equivalent of `function_checker.rs::check_struct_op`'s Pack-visibility rule,
-/// re-implemented independently since attribute conversion never builds a real `Exp`/
-/// `Operation::Pack` node for that post-pass to see. Mirrors its exact policy, including the
-/// language-version gate: before `language_version_for_public_struct`, every struct is treated as
-/// `Private` regardless of its declared visibility, so a struct this program can't legally make
-/// `public` yet can't be attribute-constructed across modules either.
+/// Mirrors `function_checker.rs::check_struct_op` for attributes, which bypass expression
+/// checking. Structs remain private until their visibility is supported by the language version.
 fn check_construction_visibility(
     env: &GlobalEnv,
     struct_env: &StructEnv,
@@ -363,10 +333,7 @@ fn check_construction_visibility(
         Ok(())
     } else {
         Err(ConversionError::StructNotConstructible {
-            struct_id: struct_env
-                .module_env
-                .get_id()
-                .qualified(struct_env.get_id()),
+            struct_id: struct_env.get_qualified_id(),
         })
     }
 }
