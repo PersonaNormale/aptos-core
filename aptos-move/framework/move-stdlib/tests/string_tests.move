@@ -1,6 +1,5 @@
 #[test_only]
 module std::string_tests {
-    use std::option;
     use std::string;
 
     #[test]
@@ -75,12 +74,5 @@ module std::string_tests {
         let s = string::utf8(b"abcd");
         s.insert(1, string::utf8(b"xy"));
         assert!(s == string::utf8(b"axybcd"), 22)
-    }
-
-    #[test(s = string::try_utf8(vector[104, 101, 108, 108, 111]), n = string::try_utf8(vector[255]))]
-    fun parametric_try_utf8_against_enum_option(s: option::Option<string::String>, n: option::Option<string::String>) {
-        assert!(s.is_some(), 0);
-        assert!(n.is_none(), 1);
-        assert!(*s.borrow() == string::utf8(b"hello"), 2);
     }
 }

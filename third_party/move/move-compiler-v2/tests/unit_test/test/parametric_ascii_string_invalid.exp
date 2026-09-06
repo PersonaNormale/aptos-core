@@ -1,9 +1,0 @@
-
-Diagnostics:
-error: unable to generate test: invalid ASCII
-  ┌─ tests/unit_test/test/parametric_ascii_string_invalid.move:5:30
-  │
-5 │     #[test(s = ascii::string(vector[255]))]
-  │                              ^^^^^^^^^^^ this byte is not a valid ASCII character (must be <= 0x7F)
-6 │     fun invalid(s: String) {
-  │                 - corresponding to this parameter

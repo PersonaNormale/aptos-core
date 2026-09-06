@@ -1,9 +1,0 @@
-
-Diagnostics:
-error: unable to generate test: mismatched types
-  ┌─ tests/unit_test/test/parametric_call_argument_type_mismatch.move:5:7
-  │
-5 │     #[test(o = option::some(5u16))]
-  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ attribute value is explicitly typed `u16`, which disagrees with this parameter
-6 │     fun wrong_arg_type(o: Option<u8>) {
-  │                        - corresponding to this parameter

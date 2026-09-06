@@ -20,7 +20,7 @@ use move_model::{
         QualifiedId, StructEnv, TypeParameter,
     },
     symbol::Symbol,
-    ty::{Type, TypeDisplayContext},
+    ty::TypeDisplayContext,
 };
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
@@ -682,17 +682,14 @@ impl<'env> Docgen<'env> {
                 };
                 format!("{}{}", module_prefix, symbol2_name)
             },
-            AttributeValue::Vector(node_id, elems) => {
+            AttributeValue::Vector(_node_id, explicit_ty, elems) => {
                 let elems_string = elems.iter().map(|e| self.gen_attribute_value(e)).join(", ");
-                // `Type::Tuple(vec![])` is the sentinel `translate_attribute_value` leaves in place
-                // when the literal had no explicit `vector<T>[...]` annotation (see convert.rs).
-                let declared = self.env.get_node_type(*node_id);
-                match declared {
-                    Type::Vector(inner) => {
+                match explicit_ty {
+                    Some(inner) => {
                         let tctx = TypeDisplayContext::new(self.env);
                         format!("vector<{}>[{}]", inner.display(&tctx), elems_string)
                     },
-                    _ => format!("vector[{}]", elems_string),
+                    None => format!("vector[{}]", elems_string),
                 }
             },
             AttributeValue::Pack(
