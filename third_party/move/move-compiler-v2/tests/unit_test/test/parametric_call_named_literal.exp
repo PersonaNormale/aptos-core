@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: wrong constructor kind
+  ┌─ tests/unit_test/test/parametric_call_named_literal.move:5:7
+  │
+5 │     #[test(o = option::some { e: 1 })]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected a positional constructor `Name(..)`
+6 │     fun named_call(o: Option<u8>) {
+  │                    - corresponding to this parameter

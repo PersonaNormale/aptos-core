@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: unsupported parameter type
+   ┌─ tests/unit_test/test/parametric_call_wrong_module.move:12:7
+   │
+12 │     #[test(w = 0x2::option::some(1))]
+   │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no struct with this name was found
+13 │     fun test_call(w: 0x2::option::FakeOption<u8>) {
+   │                   - corresponding to this parameter
