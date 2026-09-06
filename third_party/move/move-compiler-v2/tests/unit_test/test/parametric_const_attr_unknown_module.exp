@@ -1,0 +1,7 @@
+
+Diagnostics:
+error: unbound module
+  ┌─ tests/unit_test/test/parametric_const_attr_unknown_module.move:3:16
+  │
+3 │     #[test(x = does_not_exist::CONST)]
+  │                ^^^^^^^^^^^^^^ Unbound module or type alias 'does_not_exist'

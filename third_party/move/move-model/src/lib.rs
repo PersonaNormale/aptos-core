@@ -380,6 +380,10 @@ fn run_move_checker(env: &mut GlobalEnv, program: E::Program) {
     // Populate GlobalEnv with model-level information
     builder.populate_env();
 
+    // Snapshot builtin range constants (MAX_U8, ...) into GlobalEnv, since const_table is
+    // gone once building finishes.
+    builder.register_builtin_constants();
+
     // After all specs have been processed, warn about any unused schemas.
     builder.warn_unused_schemas();
 

@@ -669,8 +669,7 @@ impl<'env> Docgen<'env> {
         annotation_body
     }
 
-    /// Gets a readable version of an attribute value, recursing into `AttributeValue::Vector`
-    /// elements the same way `gen_attribute` recurses into nested attributes.
+    /// Formats an attribute value, including nested vectors, structs, and variants.
     fn gen_attribute_value(&self, attribute_value: &AttributeValue) -> String {
         match attribute_value {
             AttributeValue::Value(_node_id, value) => self.env.display(value).to_string(),

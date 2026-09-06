@@ -4,6 +4,6 @@ error: unable to generate test: mismatched types
   ┌─ tests/unit_test/test/parametric_i8_suffix_mismatch.move:5:7
   │
 5 │     #[test(x = 5i16)]
-  │       ^^^^^^^^^^^^^^ attribute value is explicitly typed `i16`, which disagrees with this parameter
+  │       ^^^^^^^^^^^^^^ attribute value has type `i16`, which disagrees with this parameter
 6 │     fun mismatch(x: i8) {
   │                  - corresponding to this parameter

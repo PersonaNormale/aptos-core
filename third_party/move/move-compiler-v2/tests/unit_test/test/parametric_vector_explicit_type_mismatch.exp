@@ -4,6 +4,6 @@ error: unable to generate test: mismatched types
   ┌─ tests/unit_test/test/parametric_vector_explicit_type_mismatch.move:3:7
   │
 3 │     #[test(xs = vector<u8>[1, 2, 3])]
-  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ attribute value is explicitly typed `vector<u8>`, which disagrees with this parameter
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ attribute value has type `vector<u8>`, which disagrees with this parameter
 4 │     fun mismatch(xs: vector<u16>) {
   │                  -- corresponding to this parameter

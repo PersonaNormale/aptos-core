@@ -1,4 +1,4 @@
-// Single case tests must keep their un-suffixed name (no #0).
+// Single case tests keep the function name without an @case suffix.
 address 0x1 {
 module M {
     #[test(addr = @0x1)]
