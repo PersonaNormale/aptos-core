@@ -1,0 +1,25 @@
+
+Diagnostics:
+error: unable to generate test: literal out of range
+  ┌─ tests/unit_test/test/parametric_vector_element_out_of_range.move:3:7
+  │
+3 │     #[test(xs = vector[300])]
+  │       ^^^^^^^^^^^^^^^^^^^^^^ value must be between `0` and `255` for this parameter
+4 │     fun out_of_range(xs: vector<u8>) {
+  │                      -- corresponding to this parameter
+
+error: unable to generate test: literal out of range
+  ┌─ tests/unit_test/test/parametric_vector_element_out_of_range.move:8:7
+  │
+8 │     #[test(xs = vector[-1])]
+  │       ^^^^^^^^^^^^^^^^^^^^^ value must be between `0` and `255` for this parameter
+9 │     fun negative_for_unsigned(xs: vector<u8>) {
+  │                               -- corresponding to this parameter
+
+error: unable to generate test: mismatched types
+   ┌─ tests/unit_test/test/parametric_vector_element_out_of_range.move:13:7
+   │
+13 │     #[test(xs = vector[5u16])]
+   │       ^^^^^^^^^^^^^^^^^^^^^^^ attribute value is explicitly typed `u16`, which disagrees with this parameter
+14 │     fun suffix_mismatch(xs: vector<u8>) {
+   │                         -- corresponding to this parameter

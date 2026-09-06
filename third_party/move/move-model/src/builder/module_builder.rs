@@ -433,74 +433,95 @@ impl ModuleBuilder<'_, '_> {
                 }
             },
             EA::Attribute_::Assigned(n, v) => {
-                let value_node_id = self
-                    .parent
-                    .env
-                    .new_node(self.parent.to_loc(&v.loc), Type::Tuple(vec![]));
-                let v = match &v.value {
-                    EA::AttributeValue_::Value(val) => {
-                        let mut et = ExpTranslator::new(self);
-                        // Default mode is Spec, where unsuffixed numbers default to u256/i256.
-                        et.set_translate_move_fun();
-                        let val = if let Some((val, ty)) =
-                            et.translate_value_free(val, &ErrorMessageContext::General)
-                        {
-                            self.parent.env.update_node_type(value_node_id, ty);
-                            val
-                        } else {
-                            // Error reported
-                            Value::Bool(false)
-                        };
-                        AttributeValue::Value(value_node_id, val)
-                    },
-                    EA::AttributeValue_::Module(mident) => {
-                        let addr_bytes = self.parent.resolve_address(
-                            &self.parent.to_loc(&mident.loc),
-                            &mident.value.address,
-                        );
-                        let module_name = ModuleName::from_address_bytes_and_name(
-                            addr_bytes,
-                            self.symbol_pool()
-                                .make(mident.value.module.0.value.as_str()),
-                        );
-                        // TODO support module attributes more than via empty string
-                        AttributeValue::Name(
-                            value_node_id,
-                            Some(module_name),
-                            self.symbol_pool().make(""),
-                        )
-                    },
-                    EA::AttributeValue_::ModuleAccess(macc) => match macc.value {
-                        EA::ModuleAccess_::Name(n) => AttributeValue::Name(
-                            value_node_id,
-                            None,
-                            self.symbol_pool().make(n.value.as_str()),
-                        ),
-                        EA::ModuleAccess_::ModuleAccess(mident, n, _) => {
-                            let (_, macc) = self.check_no_variant_and_convert_maccess(macc);
-                            let addr_bytes = self.parent.resolve_address(
-                                &self.parent.to_loc(&macc.loc),
-                                &mident.value.address,
-                            );
-                            let module_name = ModuleName::from_address_bytes_and_name(
-                                addr_bytes,
-                                self.symbol_pool()
-                                    .make(mident.value.module.0.value.as_str()),
-                            );
-                            AttributeValue::Name(
-                                value_node_id,
-                                Some(module_name),
-                                self.symbol_pool().make(n.value.as_str()),
-                            )
-                        },
-                    },
-                };
+                let value = self.translate_attribute_value(v);
                 Attribute::Assign {
                     attribute_sibling_id,
                     node_id,
                     name: self.symbol_pool().make(n.value.as_str()),
-                    value: v,
+                    value,
                 }
+            },
+        }
+    }
+
+    /// Translates one `EA::AttributeValue` node, recursively. Every nesting level gets its own
+    /// `NodeId`, the same way a single suffixed scalar (`5u8`) gets its own node today: this is
+    /// what lets an explicit `vector<u16>[...]` annotation, or a suffixed element nested inside a
+    /// vector, carry its own type down to conversion time independently of its siblings.
+    fn translate_attribute_value(&mut self, av: &EA::AttributeValue) -> AttributeValue {
+        let value_node_id = self
+            .parent
+            .env
+            .new_node(self.parent.to_loc(&av.loc), Type::Tuple(vec![]));
+        match &av.value {
+            EA::AttributeValue_::Value(val) => {
+                let mut et = ExpTranslator::new(self);
+                // Default mode is Spec, where unsuffixed numbers default to u256/i256.
+                et.set_translate_move_fun();
+                let val = if let Some((val, ty)) =
+                    et.translate_value_free(val, &ErrorMessageContext::General)
+                {
+                    self.parent.env.update_node_type(value_node_id, ty);
+                    val
+                } else {
+                    // Error reported
+                    Value::Bool(false)
+                };
+                AttributeValue::Value(value_node_id, val)
+            },
+            EA::AttributeValue_::Module(mident) => {
+                let addr_bytes = self
+                    .parent
+                    .resolve_address(&self.parent.to_loc(&mident.loc), &mident.value.address);
+                let module_name = ModuleName::from_address_bytes_and_name(
+                    addr_bytes,
+                    self.symbol_pool()
+                        .make(mident.value.module.0.value.as_str()),
+                );
+                // TODO support module attributes more than via empty string
+                AttributeValue::Name(
+                    value_node_id,
+                    Some(module_name),
+                    self.symbol_pool().make(""),
+                )
+            },
+            EA::AttributeValue_::ModuleAccess(macc) => match macc.value {
+                EA::ModuleAccess_::Name(n) => AttributeValue::Name(
+                    value_node_id,
+                    None,
+                    self.symbol_pool().make(n.value.as_str()),
+                ),
+                EA::ModuleAccess_::ModuleAccess(mident, n, _) => {
+                    let (_, macc) = self.check_no_variant_and_convert_maccess(macc);
+                    let addr_bytes = self
+                        .parent
+                        .resolve_address(&self.parent.to_loc(&macc.loc), &mident.value.address);
+                    let module_name = ModuleName::from_address_bytes_and_name(
+                        addr_bytes,
+                        self.symbol_pool()
+                            .make(mident.value.module.0.value.as_str()),
+                    );
+                    AttributeValue::Name(
+                        value_node_id,
+                        Some(module_name),
+                        self.symbol_pool().make(n.value.as_str()),
+                    )
+                },
+            },
+            EA::AttributeValue_::Vector(explicit_ty, elems) => {
+                if let Some(ty) = explicit_ty {
+                    let mut et = ExpTranslator::new(self);
+                    et.set_translate_move_fun();
+                    let model_ty = et.translate_type(ty);
+                    self.parent
+                        .env
+                        .update_node_type(value_node_id, Type::Vector(Box::new(model_ty)));
+                }
+                let translated_elems = elems
+                    .iter()
+                    .map(|e| self.translate_attribute_value(e))
+                    .collect();
+                AttributeValue::Vector(value_node_id, translated_elems)
             },
         }
     }

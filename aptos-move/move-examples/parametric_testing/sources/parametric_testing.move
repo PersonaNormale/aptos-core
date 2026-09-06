@@ -5,6 +5,8 @@
 /// Each test attribute executes with its own arguments.
 module parametric_testing::example {
     use std::signer;
+    #[test_only]
+    use std::vector;
 
     // ---------------------------------------------------------------------------
     // Module logic under test
@@ -246,5 +248,108 @@ module parametric_testing::example {
         assert!(threshold > 0);
         assert!(delta == -7 || delta == 7);
         assert!(big == 5 || big == 10);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Bool parameter.
+    // ---------------------------------------------------------------------------
+
+    #[test(flag = true)]
+    #[test(flag = false)]
+    fun bool_param_accepts_true_and_false(flag: bool) {
+        assert!(flag || !flag);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Vector-of-primitive parameter. `vector[...]` reuses Move's ordinary vector
+    // literal syntax in attribute position, converting each element to the
+    // element type the parameter declares.
+    // ---------------------------------------------------------------------------
+
+    #[test(xs = vector[1, 2, 3])]
+    fun vector_u8_param(xs: vector<u8>) {
+        assert!(vector::length(&xs) == 3);
+        assert!(*vector::borrow(&xs, 0) == 1);
+        assert!(*vector::borrow(&xs, 1) == 2);
+        assert!(*vector::borrow(&xs, 2) == 3);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Vector element type may be any primitive scalar, including a signed or
+    // 256-bit width, bool, or address; the same conversion each scalar
+    // parameter already goes through above applies per element.
+    // ---------------------------------------------------------------------------
+
+    #[test(xs = vector[-1, -2, -3])]
+    fun vector_i8_param(xs: vector<i8>) {
+        assert!(*vector::borrow(&xs, 0) == -1);
+    }
+
+    #[test(xs = vector[5u256, 10u256])]
+    fun vector_u256_param(xs: vector<u256>) {
+        assert!(*vector::borrow(&xs, 0) == 5);
+        assert!(*vector::borrow(&xs, 1) == 10);
+    }
+
+    #[test(xs = vector[true, false, true])]
+    fun vector_bool_param(xs: vector<bool>) {
+        assert!(*vector::borrow(&xs, 0));
+        assert!(!*vector::borrow(&xs, 1));
+    }
+
+    #[test(xs = vector[@0x1, @0x2])]
+    fun vector_address_param(xs: vector<address>) {
+        assert!(!blacklisted(*vector::borrow(&xs, 0)));
+        assert!(!blacklisted(*vector::borrow(&xs, 1)));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Nested vectors. Element parsing recurses, so a vector literal may itself
+    // contain vector literals, to any depth the parameter's type declares.
+    // ---------------------------------------------------------------------------
+
+    #[test(xs = vector[vector[1, 2], vector[3]])]
+    fun nested_vector_param(xs: vector<vector<u8>>) {
+        assert!(vector::length(&xs) == 2);
+        assert!(vector::length(vector::borrow(&xs, 0)) == 2);
+        assert!(vector::length(vector::borrow(&xs, 1)) == 1);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Explicit element type annotation. `vector<u8>[...]` is accepted even
+    // though the annotation is always redundant with the parameter's own
+    // declared type; the compiler checks the two agree before running.
+    // ---------------------------------------------------------------------------
+
+    #[test(xs = vector<u8>[1, 2, 3])]
+    fun explicit_vector_type_annotation(xs: vector<u8>) {
+        assert!(vector::length(&xs) == 3);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Empty vector. The element type comes from the parameter, not the
+    // (necessarily untyped) literal.
+    // ---------------------------------------------------------------------------
+
+    #[test(xs = vector[])]
+    fun empty_vector_param(xs: vector<u8>) {
+        assert!(vector::length(&xs) == 0);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Signer, address, integer, and vector parameters mixed in one function.
+    // ---------------------------------------------------------------------------
+
+    #[test(account = @0x1, threshold = 100, flagged = false, xs = vector[1, 2, 3])]
+    fun mixed_signer_integer_bool_and_vector_params(
+        account: signer,
+        threshold: u64,
+        flagged: bool,
+        xs: vector<u8>,
+    ) {
+        assert!(!blacklisted(owner_of(&account)));
+        assert!(threshold > 0);
+        assert!(!flagged);
+        assert!(vector::length(&xs) == 3);
     }
 }

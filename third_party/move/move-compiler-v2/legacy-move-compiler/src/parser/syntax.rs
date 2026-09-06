@@ -678,17 +678,62 @@ fn parse_visibility(context: &mut Context) -> Result<Visibility, Box<Diagnostic>
     })
 }
 
-// Parse an attribute value. Either a value literal or a module access
+// Parse an attribute value. Either a value literal, a module access, or a vector literal
 //      AttributeValue =
 //          <Value>
 //          | <NameAccessChain>
+//          | "vector" ('<' Type '>')? "[" Comma<AttributeValue> "]"
 fn parse_attribute_value(context: &mut Context) -> Result<AttributeValue, Box<Diagnostic>> {
+    const VECTOR_IDENT: &str = "vector";
+
     if context.tokens.peek() == Tok::Minus {
         if let Some(v) = maybe_parse_negative_num_literal(context)? {
             return Ok(sp(v.loc, AttributeValue_::Value(v)));
         }
     } else if let Some(v) = maybe_parse_value(context)? {
         return Ok(sp(v.loc, AttributeValue_::Value(v)));
+    } else if context.tokens.peek() == Tok::Identifier
+        && context.tokens.content() == VECTOR_IDENT
+        && matches!(context.tokens.lookahead(), Ok(Tok::Less | Tok::LBracket))
+    {
+        let start_loc = context.tokens.start_loc();
+        consume_identifier(context.tokens, VECTOR_IDENT)?;
+        let targs_start_loc = context.tokens.start_loc();
+        let tys_opt = parse_optional_type_args(context).map_err(|diag| {
+            let targ_loc = make_loc(context.tokens.file_hash(), targs_start_loc, targs_start_loc);
+            add_type_args_ambiguity_label(targ_loc, diag)
+        })?;
+        let ty = match tys_opt {
+            None => None,
+            Some(mut tys) if tys.len() == 1 => Some(tys.pop().expect("len == 1 checked above")),
+            Some(tys) => {
+                let loc = make_loc(
+                    context.tokens.file_hash(),
+                    targs_start_loc,
+                    context.tokens.previous_end_loc(),
+                );
+                return Err(Box::new(diag!(
+                    Syntax::UnexpectedToken,
+                    (
+                        loc,
+                        format!(
+                            "'vector' literal expects exactly one type argument, found {}",
+                            tys.len()
+                        )
+                    )
+                )));
+            },
+        };
+        let elems = parse_comma_list(
+            context,
+            Tok::LBracket,
+            Tok::RBracket,
+            parse_attribute_value,
+            "a vector element value",
+        )?;
+        let end_loc = context.tokens.previous_end_loc();
+        let loc = make_loc(context.tokens.file_hash(), start_loc, end_loc);
+        return Ok(sp(loc, AttributeValue_::Vector(ty, elems)));
     }
 
     let ma = parse_name_access_chain(context, false, || "attribute name value")?;

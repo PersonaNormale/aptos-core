@@ -135,3 +135,23 @@ fn parametric_statistics_use_case_identity() {
     assert!(statistics.contains("::foo@case1"));
     assert_eq!(statistics.matches("::foo@case").count(), 2);
 }
+
+#[test]
+fn vector_parameter_test_case_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            #[test(xs = vector[1, 2, 3])]
+            fun test_vector(xs: vector<u8>) {
+                assert!(std::vector::length(&xs) == 3, 0);
+                assert!(*std::vector::borrow(&xs, 0) == 1, 1);
+                assert!(*std::vector::borrow(&xs, 1) == 2, 2);
+                assert!(*std::vector::borrow(&xs, 2) == 3, 3);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}
