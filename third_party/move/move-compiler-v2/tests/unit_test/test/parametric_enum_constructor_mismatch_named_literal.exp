@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: wrong constructor kind
+  ┌─ tests/unit_test/test/parametric_enum_constructor_mismatch_named_literal.move:5:7
+  │
+5 │     #[test(e = Either::Left { value: 1 })]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected a positional constructor `Name(..)`
+6 │     fun named_literal_against_positional_variant(e: Either) {
+  │                                                  - corresponding to this parameter

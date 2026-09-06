@@ -173,6 +173,7 @@ pub enum AttributeValue {
         NodeId,
         Option<ModuleName>,
         Symbol,
+        /*variant*/ Option<Symbol>,
         Option<Vec<Type>>,
         PackFields,
     ),

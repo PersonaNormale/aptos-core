@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: not an enum
+  ┌─ tests/unit_test/test/parametric_enum_variant_on_non_enum.move:5:7
+  │
+5 │     #[test(p = Point::Bogus(1))]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^ `Bogus` is not a variant: `M::Point` has no variants
+6 │     fun test_bogus_variant(p: Point) {
+  │                            - corresponding to this parameter

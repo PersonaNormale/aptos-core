@@ -168,10 +168,51 @@ fn report_conversion_error(
             "unable to generate test: unsupported parameter type",
             "no struct with this name was found".to_string(),
         ),
-        ConversionError::EnumNotSupported => (
-            "unable to generate test: unsupported parameter type",
-            "enums are not supported as test attribute parameters".to_string(),
-        ),
+        ConversionError::VariantOnNonEnum { struct_id, variant } => {
+            let struct_env = env.get_struct(struct_id);
+            (
+                "unable to generate test: not an enum",
+                format!(
+                    "`{}` is not a variant: `{}` has no variants",
+                    variant.display(env.symbol_pool()),
+                    struct_env.get_full_name_str()
+                ),
+            )
+        },
+        ConversionError::VariantRequired { struct_id } => {
+            let struct_env = env.get_struct(struct_id);
+            let example = struct_env
+                .get_variants()
+                .next()
+                .map(|v| v.display(env.symbol_pool()).to_string())
+                .unwrap_or_default();
+            (
+                "unable to generate test: missing variant",
+                format!(
+                    "`{}` is an enum; a variant must be selected, e.g. `{}::{}`",
+                    struct_env.get_full_name_str(),
+                    struct_env.get_full_name_str(),
+                    example
+                ),
+            )
+        },
+        ConversionError::UnknownVariant { struct_id, variant } => {
+            let struct_env = env.get_struct(struct_id);
+            let known = struct_env
+                .get_variants()
+                .map(|v| v.display(env.symbol_pool()).to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            (
+                "unable to generate test: unknown variant",
+                format!(
+                    "no variant named `{}` on enum `{}`; known variants: {}",
+                    variant.display(env.symbol_pool()),
+                    struct_env.get_full_name_str(),
+                    known
+                ),
+            )
+        },
         ConversionError::StructNotConstructible { struct_id } => {
             let struct_env = env.get_struct(struct_id);
             (

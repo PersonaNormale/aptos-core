@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: unknown variant
+  ┌─ tests/unit_test/test/parametric_enum_unknown_variant.move:5:7
+  │
+5 │     #[test(e = Either::Middle(1))]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ no variant named `Middle` on enum `M::Either`; known variants: Left, Right
+6 │     fun test_unknown_variant(e: Either) {
+  │                              - corresponding to this parameter

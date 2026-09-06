@@ -390,6 +390,25 @@ module parametric_testing::example {
     }
 
     // ---------------------------------------------------------------------------
+    // Phantom type parameter. `T` does not appear in any field, so it carries no
+    // runtime value, but the type argument is still tracked and checked like any
+    // other generic parameter, explicit or inferred from the declared parameter
+    // type.
+    // ---------------------------------------------------------------------------
+
+    struct Phantom<phantom T> has copy, drop { val: u8 }
+
+    #[test(p = Phantom<u8> { val: 5 })]
+    fun explicit_phantom_struct_param(p: Phantom<u8>) {
+        assert!(p.val == 5);
+    }
+
+    #[test(p = Phantom { val: 5 })]
+    fun inferred_phantom_struct_param(p: Phantom<u8>) {
+        assert!(p.val == 5);
+    }
+
+    // ---------------------------------------------------------------------------
     // Nesting: a struct field may be a vector, and a vector element may be a
     // struct, to any depth.
     // ---------------------------------------------------------------------------
@@ -405,5 +424,61 @@ module parametric_testing::example {
     #[test(v = vector[Point { x: 1, y: 2 }, Point { x: 3, y: 4 }])]
     fun vector_of_structs_param(v: vector<Point>) {
         assert!(vector::length(&v) == 2);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Enum-variant parameter, named, positional, and zero-field forms. All three
+    // reuse Move's ordinary Pack-expression grammar in attribute position, and a
+    // zero-field variant may be written bare, with no `()` or `{}`.
+    // ---------------------------------------------------------------------------
+
+    enum Shape has copy, drop { Circle { radius: u8 }, Square { side: u8 } }
+    enum Either has copy, drop { Left(u8), Right(u8) }
+    enum Color has copy, drop { Red, Green }
+
+    #[test(s = Shape::Circle { radius: 5 })]
+    fun named_variant_param(s: Shape) {
+        assert!(match (s) { Shape::Circle { radius } => radius == 5, _ => false });
+    }
+
+    #[test(e = Either::Left(1))]
+    fun positional_variant_param(e: Either) {
+        assert!(match (e) { Either::Left(x) => x == 1, _ => false });
+    }
+
+    #[test(c = Color::Red)]
+    fun bare_unit_variant_param(c: Color) {
+        assert!(match (c) { Color::Red => true, Color::Green => false });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Generic enum, explicit and inferred type arguments. Explicit type args on a
+    // variant literal go after the variant name, e.g. `Enum::Variant<T>(..)`, not
+    // after the enum name, since the whole `Enum::Variant` access chain parses
+    // before any type argument list.
+    // ---------------------------------------------------------------------------
+
+    enum Boxed<T> has copy, drop { Val(T) }
+
+    #[test(b = Boxed::Val<u8>(5))]
+    fun explicit_generic_variant_param(b: Boxed<u8>) {
+        assert!(match (b) { Boxed::Val(v) => v == 5 });
+    }
+
+    #[test(b = Boxed::Val(5))]
+    fun inferred_generic_variant_param(b: Boxed<u8>) {
+        assert!(match (b) { Boxed::Val(v) => v == 5 });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Nesting: a variant field may be a vector, a struct, or another enum, to any
+    // depth.
+    // ---------------------------------------------------------------------------
+
+    enum Bundle has copy, drop { Holds(Either, vector<u8>) }
+
+    #[test(n = Bundle::Holds(Either::Left(1), vector[9, 8]))]
+    fun nested_variant_param(n: Bundle) {
+        assert!(match (n) { Bundle::Holds(_, tags) => vector::length(&tags) == 2 });
     }
 }

@@ -695,7 +695,14 @@ impl<'env> Docgen<'env> {
                     _ => format!("vector[{}]", elems_string),
                 }
             },
-            AttributeValue::Pack(_node_id, module_name_option, name, opt_type_args, fields) => {
+            AttributeValue::Pack(
+                _node_id,
+                module_name_option,
+                name,
+                variant,
+                opt_type_args,
+                fields,
+            ) => {
                 let name_str = self.name_string(*name).to_string();
                 let module_prefix = match module_name_option {
                     None => "".to_string(),
@@ -708,7 +715,11 @@ impl<'env> Docgen<'env> {
                         format!("<{}>", tys.iter().map(|ty| ty.display(&tctx)).join(", "))
                     },
                 };
-                let name_str = format!("{}{}", name_str, type_args_str);
+                let variant_str = match variant {
+                    None => "".to_string(),
+                    Some(v) => format!("::{}", self.name_string(*v)),
+                };
+                let name_str = format!("{}{}{}", name_str, type_args_str, variant_str);
                 match fields {
                     PackFields::Named(named) => {
                         let fields_str = named
