@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: mismatched types
+  ┌─ tests/unit_test/test/parametric_i128_out_of_range_below.move:5:7
+  │
+5 │     #[test(x = -170141183460469231731687303715884105729)]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ attribute value is explicitly typed `i256`, which disagrees with this parameter
+6 │     fun out_of_range(x: i128) {
+  │                      - corresponding to this parameter

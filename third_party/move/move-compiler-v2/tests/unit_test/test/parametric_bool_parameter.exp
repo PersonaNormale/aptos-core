@@ -4,6 +4,6 @@ error: unable to generate test: unsupported parameter type
   ┌─ tests/unit_test/test/parametric_bool_parameter.move:4:7
   │
 4 │     #[test(flag = true)]
-  │       ^^^^^^^^^^^^^^^^^ test attribute assignments only support `signer`, `address`, and unsigned integer parameters
+  │       ^^^^^^^^^^^^^^^^^ test attribute assignments only support `signer`, `address`, and integer parameters
 5 │     fun bool_param(flag: bool) {
   │                    ---- corresponding to this parameter
