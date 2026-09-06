@@ -115,4 +115,61 @@ module parametric_testing::example {
     fun zero_arg_case() {
         assert!(!blacklisted(@0x1));
     }
+
+    // ---------------------------------------------------------------------------
+    // Unsigned integer parameters.
+    // An unsuffixed literal (e.g. `255`) is untyped and binds freely to
+    // whichever unsigned width the parameter declares.
+    // ---------------------------------------------------------------------------
+
+    #[test(x = 0)]
+    #[test(x = 255)]
+    fun unsuffixed_literal_binds_to_declared_width(x: u8) {
+        assert!(x == 0 || x == 255);
+    }
+
+    // ---------------------------------------------------------------------------
+    // An explicitly suffixed literal (e.g. `42u16`) must agree with the
+    // parameter's declared width; the compiler checks this before running.
+    // ---------------------------------------------------------------------------
+
+    #[test(x = 42u16)]
+    fun suffixed_literal_matching_declared_width(x: u16) {
+        assert!(x == 42);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Every unsigned width from u8 up to u128 is accepted.
+    // ---------------------------------------------------------------------------
+
+    #[test(x = 1)]
+    fun u8_param(x: u8) {
+        assert!(x == 1);
+    }
+
+    #[test(x = 1)]
+    fun u32_param(x: u32) {
+        assert!(x == 1);
+    }
+
+    #[test(x = 1)]
+    fun u64_param(x: u64) {
+        assert!(x == 1);
+    }
+
+    #[test(x = 340282366920938463463374607431768211455u128)]
+    fun u128_param_at_max_value(x: u128) {
+        assert!(x == 340282366920938463463374607431768211455);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Signer, address, and unsigned integer parameters mixed in one function.
+    // ---------------------------------------------------------------------------
+
+    #[test(account = @0x1, threshold = 100)]
+    #[test(account = @0x2, threshold = 200)]
+    fun mixed_signer_and_integer_params(account: signer, threshold: u64) {
+        assert!(!blacklisted(owner_of(&account)));
+        assert!(threshold > 0);
+    }
 }

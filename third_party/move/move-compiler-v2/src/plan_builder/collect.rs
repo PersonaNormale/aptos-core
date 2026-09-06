@@ -4,7 +4,7 @@
 // All Aptos Foundation code and content is licensed pursuant to the Innovation-Enabling Source Code License, available at https://github.com/aptos-labs/aptos-core/blob/main/LICENSE
 
 //! Groups a function's `#[test]`/`#[expected_failure]` attributes into one `RawTestCase` per
-//! `#[test(...)]` row, and validates every cross-case invariant along the way.
+//! `#[test(...)]` attribute, and validates every cross-case invariant along the way.
 
 use super::failure::parse_failure_attribute;
 use codespan_reporting::diagnostic::Severity;
@@ -17,7 +17,7 @@ use move_model::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-/// One `#[test(...)]` row of a (possibly parametric) test function, with its
+/// One `#[test(...)]` attribute of a (possibly parametric) test function, with its
 /// `#[expected_failure]` already resolved.
 pub(super) struct RawTestCase<'a> {
     pub(super) index: usize,

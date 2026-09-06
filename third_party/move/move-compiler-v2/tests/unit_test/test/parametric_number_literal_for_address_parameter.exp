@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: unexpected argument type
+  ┌─ tests/unit_test/test/parametric_number_literal_for_address_parameter.move:4:7
+  │
+4 │     #[test(x = 5)]
+  │       ^^^^^^^^^^^ expected an `address` or `signer` literal
+5 │     fun number_for_address(x: address) {
+  │                            - corresponding to this parameter

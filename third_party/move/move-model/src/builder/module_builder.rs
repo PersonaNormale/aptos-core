@@ -439,9 +439,13 @@ impl ModuleBuilder<'_, '_> {
                     .new_node(self.parent.to_loc(&v.loc), Type::Tuple(vec![]));
                 let v = match &v.value {
                     EA::AttributeValue_::Value(val) => {
-                        let val = if let Some((val, _)) = ExpTranslator::new(self)
-                            .translate_value_free(val, &ErrorMessageContext::General)
+                        let mut et = ExpTranslator::new(self);
+                        // Default mode is Spec, where unsuffixed numbers default to u256/i256.
+                        et.set_translate_move_fun();
+                        let val = if let Some((val, ty)) =
+                            et.translate_value_free(val, &ErrorMessageContext::General)
                         {
+                            self.parent.env.update_node_type(value_node_id, ty);
                             val
                         } else {
                             // Error reported
