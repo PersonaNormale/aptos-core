@@ -699,6 +699,9 @@ fn attr_value_to_string(env: &GlobalEnv, val: &AttributeValue) -> String {
         },
         AttributeValue::Pack(_, module_opt, name, variant, type_args, fields) => {
             let mut head = qualified_name(env, module_opt.as_ref(), *name);
+            if let Some(variant) = variant {
+                head = format!("{}::{}", head, variant.display(env.symbol_pool()));
+            }
             if let Some(tys) = type_args {
                 let tctx = TypeDisplayContext::new(env);
                 let tys = tys
@@ -707,9 +710,6 @@ fn attr_value_to_string(env: &GlobalEnv, val: &AttributeValue) -> String {
                     .collect::<Vec<_>>()
                     .join(", ");
                 head = format!("{}<{}>", head, tys);
-            }
-            if let Some(variant) = variant {
-                head = format!("{}::{}", head, variant.display(env.symbol_pool()));
             }
             match fields {
                 PackFields::Named(named) => {
