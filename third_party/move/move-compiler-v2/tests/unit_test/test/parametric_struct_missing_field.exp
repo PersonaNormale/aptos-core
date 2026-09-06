@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: missing struct fields
+  ┌─ tests/unit_test/test/parametric_struct_missing_field.move:5:7
+  │
+5 │     #[test(p = Point { x: 1 })]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^ missing field(s): y
+6 │     fun missing_field(p: Point) {
+  │                       - corresponding to this parameter

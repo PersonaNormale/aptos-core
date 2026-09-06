@@ -155,3 +155,23 @@ fn vector_parameter_test_case_actually_executes() {
     let output = run_source(source, None, false);
     assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
 }
+
+#[test]
+fn struct_parameter_test_case_actually_executes() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Point has copy, drop { x: u8, y: u8 }
+
+            #[test(p = Point { x: 1, y: 2 })]
+            fun test_point(p: Point) {
+                assert!(p.x == 1, 0);
+                assert!(p.y == 2, 1);
+            }
+        }
+        }
+    "#;
+
+    let output = run_source(source, None, false);
+    assert!(output.contains("Total tests: 1; passed: 1; failed: 0"));
+}

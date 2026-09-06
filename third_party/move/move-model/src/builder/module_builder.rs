@@ -7,7 +7,7 @@ use crate::{
     ast::{
         AccessSpecifier, Address, Attribute, AttributeValue, BehaviorKind, Condition,
         ConditionKind, Exp, ExpData, FrameSpec, FriendDecl, FunParamAccessOf, LemmaDecl, LemmaId,
-        MemoryLabel, MemoryRange, ModuleName, Operation, Pattern, Proof, PropertyBag,
+        MemoryLabel, MemoryRange, ModuleName, Operation, PackFields, Pattern, Proof, PropertyBag,
         PropertyValue, QualifiedSymbol, Spec, SpecBlockInfo, SpecBlockTarget, SpecFunDecl,
         SpecVarDecl, TempIndex, UseDecl, Value,
     },
@@ -522,6 +522,47 @@ impl ModuleBuilder<'_, '_> {
                     .map(|e| self.translate_attribute_value(e))
                     .collect();
                 AttributeValue::Vector(value_node_id, translated_elems)
+            },
+            EA::AttributeValue_::Pack(macc, opt_tys, pfields) => {
+                let (module_opt, name) = match &macc.value {
+                    EA::ModuleAccess_::Name(n) => (None, self.symbol_pool().make(n.value.as_str())),
+                    EA::ModuleAccess_::ModuleAccess(mident, n, _) => {
+                        let addr_bytes = self
+                            .parent
+                            .resolve_address(&self.parent.to_loc(&macc.loc), &mident.value.address);
+                        let module_name = ModuleName::from_address_bytes_and_name(
+                            addr_bytes,
+                            self.symbol_pool()
+                                .make(mident.value.module.0.value.as_str()),
+                        );
+                        (Some(module_name), self.symbol_pool().make(n.value.as_str()))
+                    },
+                };
+                let model_tys_opt = opt_tys.as_ref().map(|tys| {
+                    let mut et = ExpTranslator::new(self);
+                    et.set_translate_move_fun();
+                    tys.iter()
+                        .map(|ty| et.translate_type(ty))
+                        .collect::<Vec<_>>()
+                });
+                let model_fields = match pfields {
+                    EA::PackFields::Named(efs) => PackFields::Named(
+                        efs.iter()
+                            .map(|(_, sym, (_, v))| {
+                                (
+                                    self.symbol_pool().make(sym.as_str()),
+                                    self.translate_attribute_value(v),
+                                )
+                            })
+                            .collect(),
+                    ),
+                    EA::PackFields::Positional(evs) => PackFields::Positional(
+                        evs.iter()
+                            .map(|v| self.translate_attribute_value(v))
+                            .collect(),
+                    ),
+                };
+                AttributeValue::Pack(value_node_id, module_opt, name, model_tys_opt, model_fields)
             },
         }
     }

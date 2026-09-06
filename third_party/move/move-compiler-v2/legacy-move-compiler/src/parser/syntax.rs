@@ -736,8 +736,72 @@ fn parse_attribute_value(context: &mut Context) -> Result<AttributeValue, Box<Di
         return Ok(sp(loc, AttributeValue_::Vector(ty, elems)));
     }
 
+    // Attribute-value grammar has no `a < b` boolean-operator reading to disambiguate against
+    // (unlike ordinary expressions), so unlike `parse_name_exp`, optional type args can always be
+    // attempted immediately after the name with no same-line lookahead guard.
+    let start_loc = context.tokens.start_loc();
     let ma = parse_name_access_chain(context, false, || "attribute name value")?;
-    Ok(sp(ma.loc, AttributeValue_::ModuleAccess(ma)))
+    let targs_start_loc = context.tokens.start_loc();
+    let tys_opt = parse_optional_type_args(context).map_err(|diag| {
+        let targ_loc = make_loc(context.tokens.file_hash(), targs_start_loc, targs_start_loc);
+        add_type_args_ambiguity_label(targ_loc, diag)
+    })?;
+    match context.tokens.peek() {
+        Tok::LBrace => {
+            let fields = parse_comma_list(
+                context,
+                Tok::LBrace,
+                Tok::RBrace,
+                parse_attribute_value_field,
+                "a struct field value",
+            )?;
+            let end_loc = context.tokens.previous_end_loc();
+            let loc = make_loc(context.tokens.file_hash(), start_loc, end_loc);
+            Ok(sp(
+                loc,
+                AttributeValue_::Pack(ma, tys_opt, PackFields::Named(fields)),
+            ))
+        },
+        Tok::LParen => {
+            let elems = parse_comma_list(
+                context,
+                Tok::LParen,
+                Tok::RParen,
+                parse_attribute_value,
+                "a positional field value",
+            )?;
+            let end_loc = context.tokens.previous_end_loc();
+            let loc = make_loc(context.tokens.file_hash(), start_loc, end_loc);
+            Ok(sp(
+                loc,
+                AttributeValue_::Pack(ma, tys_opt, PackFields::Positional(elems)),
+            ))
+        },
+        _ if tys_opt.is_some() => {
+            let loc = make_loc(
+                context.tokens.file_hash(),
+                targs_start_loc,
+                context.tokens.previous_end_loc(),
+            );
+            Err(Box::new(diag!(
+                Syntax::UnexpectedToken,
+                (loc, "expected '{' or '(' after type arguments".to_string())
+            )))
+        },
+        _ => Ok(sp(ma.loc, AttributeValue_::ModuleAccess(ma))),
+    }
+}
+
+// Parse a struct-literal field inside an attribute value: `<Field> ":" <AttributeValue>`.
+// Unlike `parse_exp_field`, the colon is not optional: there is no local variable an
+// attribute-position field name could shorthand-reference.
+fn parse_attribute_value_field(
+    context: &mut Context,
+) -> Result<(Field, AttributeValue), Box<Diagnostic>> {
+    let f = parse_field(context)?;
+    consume_token(context.tokens, Tok::Colon)?;
+    let v = parse_attribute_value(context)?;
+    Ok((f, v))
 }
 
 // Parse a single attribute

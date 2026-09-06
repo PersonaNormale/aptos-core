@@ -23,7 +23,11 @@ use crate::{
     },
     shared::{
         builtins,
-        known_attributes::{AttributeKind, AttributePosition, KnownAttribute, TestingAttribute},
+        known_attributes::{
+            AttributeKind, AttributePosition, DeprecationAttribute, ExecutionAttribute,
+            KnownAttribute, LintAttribute, NativeAttribute, TestingAttribute,
+            VerificationAttribute,
+        },
         unique_map::UniqueMap,
         CompilationEnv, Identifier, Name, NamedAddressMap, NamedAddressMaps, NumericalAddress,
     },
@@ -723,8 +727,21 @@ fn skip_dedup(name_: &E::AttributeName_, is_test_context: bool) -> bool {
         E::AttributeName_::Known(KnownAttribute::Testing(
             TestingAttribute::Test | TestingAttribute::ExpectedFailure,
         )) => true,
+        E::AttributeName_::Known(KnownAttribute::Testing(TestingAttribute::TestOnly)) => false,
+        E::AttributeName_::Known(KnownAttribute::Verification(
+            VerificationAttribute::VerifyOnly,
+        )) => false,
+        E::AttributeName_::Known(KnownAttribute::Native(
+            NativeAttribute::BytecodeInstruction | NativeAttribute::NativeInterface,
+        )) => false,
+        E::AttributeName_::Known(KnownAttribute::Deprecation(DeprecationAttribute::Deprecated)) => {
+            false
+        },
+        E::AttributeName_::Known(KnownAttribute::Lint(LintAttribute::Allow)) => false,
+        E::AttributeName_::Known(KnownAttribute::Execution(
+            ExecutionAttribute::Persistent | ExecutionAttribute::ModuleLock,
+        )) => false,
         E::AttributeName_::Unknown(_) => is_test_context,
-        _ => false,
     }
 }
 
@@ -815,6 +832,35 @@ fn attribute_value(
                 .map(|e| attribute_value(context, e))
                 .collect::<Option<Vec<_>>>()?,
         ),
+        PV::Pack(pn, ptys_opt, pfields) => {
+            let macc = name_access_chain(context, Access::Type, pn)?;
+            let tys_opt = ptys_opt.map(|tys| {
+                tys.into_iter()
+                    .map(|ty| type_(context, ty))
+                    .collect::<Vec<_>>()
+            });
+            let efields = match pfields {
+                P::PackFields::Named(pfs) => {
+                    let efs_vec = pfs
+                        .into_iter()
+                        .map(|(f, pv)| Some((f, attribute_value(context, pv)?)))
+                        .collect::<Option<Vec<_>>>()?;
+                    E::PackFields::Named(fields(
+                        context,
+                        loc,
+                        "attribute construction",
+                        "value",
+                        efs_vec,
+                    ))
+                },
+                P::PackFields::Positional(pvs) => E::PackFields::Positional(
+                    pvs.into_iter()
+                        .map(|pv| attribute_value(context, pv))
+                        .collect::<Option<Vec<_>>>()?,
+                ),
+            };
+            EV::Pack(macc, tys_opt, efields)
+        },
         PV::ModuleAccess(sp!(ident_loc, PN::Two(sp!(aloc, LN::AnonymousAddress(a)), n))) => {
             let addr = Address::Numerical(None, sp(aloc, a));
             let mident = sp(ident_loc, ModuleIdent_::new(addr, ModuleName(n)));

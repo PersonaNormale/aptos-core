@@ -4,7 +4,7 @@
 use move_core_types::{
     account_address::AccountAddress,
     int256::{I256, U256},
-    value::MoveValue,
+    value::{MoveStruct, MoveValue},
 };
 use move_unit_test::UnitTestingConfig;
 use std::fs;
@@ -548,5 +548,249 @@ fn empty_vector_is_supported_for_every_element_type() {
     ]);
     assert_eq!(module.tests.get("empty_address").unwrap().arguments, vec![
         MoveValue::Vector(vec![])
+    ]);
+}
+
+#[test]
+fn named_struct_same_module_is_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Point has copy, drop { x: u8, y: u8 }
+            #[test(p = Point { x: 1, y: 2 })]
+            fun test_point(p: Point) { let _ = p; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_point").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(1), MoveValue::U8(2)]))
+    ]);
+}
+
+#[test]
+fn named_struct_field_order_independent() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Point has copy, drop { x: u8, y: u8 }
+            #[test(p = Point { y: 2, x: 1 })]
+            fun test_point(p: Point) { let _ = p; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_point").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(1), MoveValue::U8(2)]))
+    ]);
+}
+
+#[test]
+fn positional_struct_same_module_is_supported() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Pair(u8, u8) has copy, drop;
+            #[test(p = Pair(1, 2))]
+            fun test_pair(p: Pair) { let _ = p; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_pair").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(1), MoveValue::U8(2)]))
+    ]);
+}
+
+#[test]
+fn generic_struct_explicit_type_args_matching_parameter() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Wrapper<T> has copy, drop { val: T }
+            #[test(w = Wrapper<u8> { val: 5 })]
+            fun test_wrapper(w: Wrapper<u8>) { let _ = w; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_wrapper").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(5)]))
+    ]);
+}
+
+#[test]
+fn generic_struct_type_args_inferred_from_parameter() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Wrapper<T> has copy, drop { val: T }
+            #[test(w = Wrapper { val: 5 })]
+            fun test_wrapper(w: Wrapper<u8>) { let _ = w; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_wrapper").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(5)]))
+    ]);
+}
+
+#[test]
+fn generic_struct_two_type_parameters_one_used_per_field() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Both<A, B> has copy, drop { first: A, second: B }
+            #[test(b = Both<u8, bool> { first: 5, second: true })]
+            fun test_both(b: Both<u8, bool>) { let _ = b; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_both").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![
+            MoveValue::U8(5),
+            MoveValue::Bool(true)
+        ]))
+    ]);
+}
+
+#[test]
+fn struct_field_containing_a_vector() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Tagged has copy, drop { tags: vector<u8> }
+            #[test(t = Tagged { tags: vector[9, 8] })]
+            fun test_tagged(t: Tagged) { let _ = t; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_tagged").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(vec![
+            MoveValue::U8(9),
+            MoveValue::U8(8)
+        ])]))
+    ]);
+}
+
+#[test]
+fn struct_field_containing_another_struct() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Point has copy, drop { x: u8, y: u8 }
+            struct Nested has copy, drop { pt: Point }
+            #[test(n = Nested { pt: Point { x: 1, y: 2 } })]
+            fun test_nested(n: Nested) { let _ = n; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_nested").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Struct(MoveStruct::new(
+            vec![MoveValue::U8(1), MoveValue::U8(2)]
+        ))]))
+    ]);
+}
+
+#[test]
+fn vector_element_containing_a_struct() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Point has copy, drop { x: u8, y: u8 }
+            #[test(v = vector[Point { x: 1, y: 2 }, Point { x: 3, y: 4 }])]
+            fun test_vec(v: vector<Point>) { let _ = v; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_vec").unwrap().arguments, vec![
+        MoveValue::Vector(vec![
+            MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(1), MoveValue::U8(2)])),
+            MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(3), MoveValue::U8(4)])),
+        ])
+    ]);
+}
+
+#[test]
+fn three_levels_of_nesting() {
+    let source = r#"
+        address 0x1 {
+        module M {
+            struct Point has copy, drop { x: u8, y: u8 }
+            struct Nested has copy, drop { pt: Point, tags: vector<u8> }
+            #[test(n = Nested { pt: Point { x: 1, y: 2 }, tags: vector[9, 8] })]
+            fun test_nested(n: Nested) { let _ = n; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan.module_tests.values().next().unwrap();
+
+    assert_eq!(module.tests.get("test_nested").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![
+            MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(1), MoveValue::U8(2)])),
+            MoveValue::Vector(vec![MoveValue::U8(9), MoveValue::U8(8)]),
+        ]))
+    ]);
+}
+
+#[test]
+fn public_struct_constructible_from_another_module() {
+    let source = r#"
+        address 0x1 {
+        module Defines {
+            public struct Point has copy, drop { x: u8 }
+        }
+        module M {
+            use 0x1::Defines::Point;
+            #[test(p = Point { x: 1 })]
+            fun test_point(p: Point) { let _ = p; }
+        }
+        }
+    "#;
+
+    let plan = build_test_plan_from_source(source);
+    let module = plan
+        .module_tests
+        .iter()
+        .find(|(id, _)| id.short_str_lossless().contains("M"))
+        .map(|(_, m)| m)
+        .unwrap();
+
+    assert_eq!(module.tests.get("test_point").unwrap().arguments, vec![
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::U8(1)]))
     ]);
 }
