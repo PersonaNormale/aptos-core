@@ -1,0 +1,10 @@
+
+Diagnostics:
+warning: Unused value of parameter `vec`. Consider removing the parameter, or prefixing with an underscore (e.g., `_vec`), or binding to `_`
+   ┌─ tests/unit_test/test/parametric_option_from_vec.move:12:34
+   │
+12 │     public fun from_vec<Element>(vec: vector<Element>): Option<Element> {
+   │                                  ^^^
+
+
+============ bytecode verification succeeded ========

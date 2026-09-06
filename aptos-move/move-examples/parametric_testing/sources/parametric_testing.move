@@ -518,4 +518,45 @@ module parametric_testing::example {
     fun option_of_struct_param(o: Option<Point>) {
         assert!(option::is_some(&o));
     }
+
+    // ---------------------------------------------------------------------------
+    // option::from_vec. Framework-only (this package already depends on the framework
+    // stdlib, so it's the only Option representation in scope here): a 0- or 1-element
+    // vector converts to None/Some, matching the vector's own runtime length check.
+    // ---------------------------------------------------------------------------
+
+    #[test(o = option::from_vec(vector[]), n = option::from_vec(vector[5]))]
+    fun option_from_vec_param(o: Option<u8>, n: Option<u8>) {
+        assert!(option::is_none(&o));
+        assert!(option::is_some(&n));
+        assert!(*option::borrow(&n) == 5);
+    }
+
+    // ---------------------------------------------------------------------------
+    // string::try_utf8. Non-aborting counterpart to string::utf8: invalid bytes produce
+    // None instead of failing the whole test attribute, so callers should check
+    // is_some/is_none rather than assuming success unconditionally.
+    // ---------------------------------------------------------------------------
+
+    #[test(s = string::try_utf8(vector[104, 105]), n = string::try_utf8(vector[255]))]
+    fun string_try_utf8_param(s: Option<String>, n: Option<String>) {
+        assert!(option::is_some(&s));
+        assert!(option::is_none(&n));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Byte-string literals. b"..." and x"..." are accepted anywhere a vector<u8>
+    // parameter is declared, as an alternative to the numeric vector[...] form used
+    // above.
+    // ---------------------------------------------------------------------------
+
+    #[test(xs = b"hi")]
+    fun byte_string_literal_param(xs: vector<u8>) {
+        assert!(vector::length(&xs) == 2);
+    }
+
+    #[test(xs = x"6869")]
+    fun hex_string_literal_param(xs: vector<u8>) {
+        assert!(vector::length(&xs) == 2);
+    }
 }

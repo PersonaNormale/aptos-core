@@ -177,6 +177,11 @@ fn test_dispatching() {
 }
 
 #[test]
+fn test_parametric_testing() {
+    test_common("parametric_testing");
+}
+
+#[test]
 fn test_fungible_asset() {
     let named_address = BTreeMap::from([
         (

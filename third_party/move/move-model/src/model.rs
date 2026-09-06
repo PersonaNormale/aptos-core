@@ -4292,6 +4292,10 @@ impl<'env> ModuleEnv<'env> {
     pub fn is_string(&self) -> bool {
         self.is_module_in_std("string")
     }
+
+    pub fn is_ascii(&self) -> bool {
+        self.is_module_in_std("ascii")
+    }
 }
 
 // =================================================================================================

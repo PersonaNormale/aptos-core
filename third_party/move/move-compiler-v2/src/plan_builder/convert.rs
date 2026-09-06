@@ -433,6 +433,12 @@ pub(super) enum ConversionError {
     InvalidUtf8 {
         node_id: NodeId,
     },
+    OptionVecTooLong {
+        node_id: NodeId,
+    },
+    InvalidAscii {
+        node_id: NodeId,
+    },
 }
 
 /// Converts a `#[test(...)]` attribute value into the `MoveValue` a parameter of type `target`
@@ -470,10 +476,9 @@ pub(super) fn to_move_value(
             Ok(MoveValue::Vector(converted))
         },
         (
-            AttributeValue::Pack(node_id, opt_module, name, variant, opt_type_args, fields),
+            AttributeValue::Pack(_node_id, opt_module, name, variant, opt_type_args, fields),
             Type::Struct(target_mid, target_sid, target_args),
         ) => to_move_struct(
-            *node_id,
             opt_module,
             *name,
             variant,
@@ -485,6 +490,13 @@ pub(super) fn to_move_value(
             current_module,
             env,
         ),
+        (AttributeValue::Value(_, Value::ByteArray(bytes)), Type::Vector(inner))
+            if **inner == Type::Primitive(PrimitiveType::U8) =>
+        {
+            Ok(MoveValue::Vector(
+                bytes.iter().map(|b| MoveValue::U8(*b)).collect(),
+            ))
+        },
         (AttributeValue::Value(node_id, _), _) => Err(ConversionError::TypeMismatch {
             declared: env.get_node_type(*node_id),
         }),
@@ -503,7 +515,6 @@ pub(super) fn to_move_value(
 /// `variant` is `Some` for an enum-variant literal (`Enum::Variant(..)`/`Enum::Variant{..}`) and
 /// `None` for a plain struct literal.
 fn to_move_struct(
-    node_id: NodeId,
     opt_module: &Option<ModuleName>,
     name: Symbol,
     variant: &Option<Symbol>,
@@ -525,7 +536,6 @@ fn to_move_struct(
                 .ok_or(ConversionError::UnknownStruct)?;
             let kind = allowlisted_constructor(&func_env).ok_or(ConversionError::UnknownStruct)?;
             return build_constructor_call(
-                node_id,
                 &func_env,
                 kind,
                 opt_type_args,
@@ -711,29 +721,56 @@ fn build_struct_or_variant_value(
     }
 }
 
-/// The three functions Layer 7 recognizes in attribute-call position, in place of a field
-/// literal, since neither `Option` nor `String` exposes a public field to construct directly.
+/// The `Option`/`String`/`ascii` functions recognized in attribute-call position, in place of a
+/// field literal, since none of these types exposes a public field to construct directly.
 #[derive(Clone, Copy)]
 enum ConstructorKind {
     OptionNone,
     OptionSome,
+    OptionFromVec,
     StringUtf8,
+    StringTryUtf8,
+    AsciiString,
+    AsciiTryString,
+    AsciiChar,
 }
 
-/// Whether `func_env` is one of the three allowlisted constructors, checked by module and
-/// function identity, not by resolved struct/enum identity: at the point this is called,
-/// `name` has already failed to resolve as a struct, so there is no struct/enum to
-/// identity-check against yet.
+/// The three stdlib modules whose constructors `allowlisted_constructor` recognizes.
+enum StdModule {
+    Option,
+    String,
+    Ascii,
+}
+
+fn stdmodule(module_env: &ModuleEnv) -> Option<StdModule> {
+    if module_env.is_option() {
+        Some(StdModule::Option)
+    } else if module_env.is_string() {
+        Some(StdModule::String)
+    } else if module_env.is_ascii() {
+        Some(StdModule::Ascii)
+    } else {
+        None
+    }
+}
+
+/// Whether `func_env` is one of the allowlisted constructors, checked by module and function
+/// identity, not by resolved struct/enum identity: at the point this is called, `name` has
+/// already failed to resolve as a struct, so there is no struct/enum to identity-check against
+/// yet.
 fn allowlisted_constructor(func_env: &FunctionEnv) -> Option<ConstructorKind> {
-    let module_env = &func_env.module_env;
     match (
-        module_env.is_option(),
-        module_env.is_string(),
+        stdmodule(&func_env.module_env)?,
         func_env.get_name_str().as_str(),
     ) {
-        (true, false, "none") => Some(ConstructorKind::OptionNone),
-        (true, false, "some") => Some(ConstructorKind::OptionSome),
-        (false, true, "utf8") => Some(ConstructorKind::StringUtf8),
+        (StdModule::Option, "none") => Some(ConstructorKind::OptionNone),
+        (StdModule::Option, "some") => Some(ConstructorKind::OptionSome),
+        (StdModule::Option, "from_vec") => Some(ConstructorKind::OptionFromVec),
+        (StdModule::String, "utf8") => Some(ConstructorKind::StringUtf8),
+        (StdModule::String, "try_utf8") => Some(ConstructorKind::StringTryUtf8),
+        (StdModule::Ascii, "string") => Some(ConstructorKind::AsciiString),
+        (StdModule::Ascii, "try_string") => Some(ConstructorKind::AsciiTryString),
+        (StdModule::Ascii, "char") => Some(ConstructorKind::AsciiChar),
         _ => None,
     }
 }
@@ -749,10 +786,10 @@ fn attribute_value_node_id(value: &AttributeValue) -> NodeId {
     }
 }
 
-/// Reads the constructed `String`'s byte vector back out of its `MoveValue::Struct`, so
-/// `build_constructor_call` can run the same UTF-8 check `string::utf8`'s native performs at
-/// runtime, at compile time instead.
-fn utf8_bytes_from_string_value(value: &MoveValue) -> Vec<u8> {
+/// Reads a single-vector-field struct's (`String`, `ascii::String`) backing bytes back out of
+/// its `MoveValue::Struct`, so the constructor that built it can run the same validity check its
+/// native body performs at runtime, at compile time instead.
+fn bytes_from_single_vector_field(value: &MoveValue) -> Vec<u8> {
     let MoveValue::Struct(s) = value else {
         unreachable!("string::utf8 always builds a MoveValue::Struct")
     };
@@ -769,12 +806,77 @@ fn utf8_bytes_from_string_value(value: &MoveValue) -> Vec<u8> {
         .collect()
 }
 
-/// Lowers a call to one of the three allowlisted `Option`/`String` constructors into the same
-/// `Pack` field layout a hand-written literal for that constructor would need, reading the
-/// real field layout off the resolved function's own return type so the result stays correct
-/// whether `Option` is declared as the legacy `vec`-field struct or the current enum.
+/// `ascii::is_valid_char`'s predicate (`ascii.move:139-141`), reused at compile time so
+/// `ascii::string`/`ascii::try_string`/`ascii::char` can validate their bytes the same way their
+/// native bodies do at runtime.
+fn is_valid_ascii_byte(b: u8) -> bool {
+    b <= 0x7F
+}
+
+/// Reads `ascii::Char`'s single scalar `byte` field back out of its `MoveValue::Struct`, the
+/// scalar counterpart of `bytes_from_single_vector_field`.
+fn byte_from_single_scalar_field(value: &MoveValue) -> u8 {
+    let MoveValue::Struct(s) = value else {
+        unreachable!("a single-scalar-field struct constructor always builds a MoveValue::Struct")
+    };
+    let (_, fields) = s.optional_variant_and_fields();
+    match &fields[0] {
+        MoveValue::U8(b) => *b,
+        _ => unreachable!("ascii::Char's one field is always a u8"),
+    }
+}
+
+/// Builds a single-field, never-enum-declared struct (`String`, `ascii::String`, `ascii::Char`)
+/// from one already-parsed constructor argument, reusing the ordinary field-conversion path an
+/// equivalent hand-written struct literal would go through.
+fn build_single_field_struct(
+    struct_env: &StructEnv,
+    arg: AttributeValue,
+    current_module: &ModuleName,
+    env: &GlobalEnv,
+) -> Result<MoveValue, ConversionError> {
+    let declared_fields: Vec<_> = struct_env.get_fields().collect();
+    let field_name = declared_fields[0].get_name();
+    build_struct_or_variant_value(
+        None,
+        declared_fields,
+        false,
+        &PackFields::Named(vec![(field_name, arg)]),
+        &None,
+        struct_env.module_env.get_id(),
+        struct_env.get_id(),
+        &[],
+        current_module,
+        env,
+    )
+}
+
+/// Builds an `Option` value directly from an already-converted payload. Used by every
+/// allowlisted constructor that produces an `Option`: `option::none`/`option::some` know their
+/// variant from the constructor name alone; `option::from_vec`/`string::try_utf8`/
+/// `ascii::try_string` (Layer 8) decide `Some` vs `None` from data the call itself carries.
+/// Handles both the framework's enum-declared `Option` and the legacy struct-declared copy.
+fn wrap_in_option(struct_env: &StructEnv, payload: Option<MoveValue>) -> MoveValue {
+    if struct_env.has_variants() {
+        let (name, values) = match payload {
+            Some(v) => ("Some", vec![v]),
+            None => ("None", vec![]),
+        };
+        let idx = struct_env
+            .get_variant_idx(struct_env.symbol_pool().make(name))
+            .expect("the enum-declared std::option::Option always has None and Some variants");
+        MoveValue::Struct(MoveStruct::new_variant(idx, values))
+    } else {
+        let elems = payload.into_iter().collect::<Vec<_>>();
+        MoveValue::Struct(MoveStruct::new(vec![MoveValue::Vector(elems)]))
+    }
+}
+
+/// Lowers a call to an allowlisted `Option`/`String` constructor into the `MoveValue` a
+/// hand-written literal for that constructor would need, reading the real field layout off the
+/// resolved function's own return type so the result stays correct whether `Option` is declared
+/// as the legacy `vec`-field struct or the current enum.
 fn build_constructor_call(
-    call_node_id: NodeId,
     func_env: &FunctionEnv,
     kind: ConstructorKind,
     opt_type_args: &Option<Vec<Type>>,
@@ -786,12 +888,19 @@ fn build_constructor_call(
     env: &GlobalEnv,
 ) -> Result<MoveValue, ConversionError> {
     let Type::Struct(mid, sid, _) = func_env.get_result_type() else {
-        unreachable!("option::none/some and string::utf8 all return a struct/enum type")
+        unreachable!("every allowlisted constructor returns a struct/enum type")
     };
     if (mid, sid) != (target_mid, target_sid) {
         return Err(ConversionError::TypeMismatch {
             declared: Type::Struct(mid, sid, vec![]),
         });
+    }
+    if let Some(explicit) = opt_type_args {
+        if explicit != target_args {
+            return Err(ConversionError::TypeMismatch {
+                declared: Type::Struct(target_mid, target_sid, explicit.clone()),
+            });
+        }
     }
 
     let PackFields::Positional(args) = fields else {
@@ -801,7 +910,13 @@ fn build_constructor_call(
     };
     let expected_arity = match kind {
         ConstructorKind::OptionNone => 0,
-        ConstructorKind::OptionSome | ConstructorKind::StringUtf8 => 1,
+        ConstructorKind::OptionSome
+        | ConstructorKind::OptionFromVec
+        | ConstructorKind::StringUtf8
+        | ConstructorKind::StringTryUtf8
+        | ConstructorKind::AsciiString
+        | ConstructorKind::AsciiTryString
+        | ConstructorKind::AsciiChar => 1,
     };
     if args.len() != expected_arity {
         return Err(ConversionError::FieldCountMismatch {
@@ -811,86 +926,104 @@ fn build_constructor_call(
     }
 
     let struct_env = env.get_struct(mid.qualified(sid));
-    let (variant_tag, declared_fields, is_empty) = match struct_env.has_variants() {
-        true => match kind {
-            ConstructorKind::OptionNone => {
-                let v = env.symbol_pool().make("None");
-                let idx = struct_env
-                    .get_variant_idx(v)
-                    .expect("the enum-declared std::option::Option always has a None variant");
-                (Some(idx), Vec::new(), true)
-            },
-            ConstructorKind::OptionSome => {
-                let v = env.symbol_pool().make("Some");
-                let idx = struct_env
-                    .get_variant_idx(v)
-                    .expect("the enum-declared std::option::Option always has a Some variant");
-                let fields: Vec<_> = struct_env.get_fields_of_variant(v).collect();
-                (Some(idx), fields, false)
-            },
-            ConstructorKind::StringUtf8 => {
-                unreachable!("string::utf8 targets String, which is never declared with variants")
-            },
-        },
-        false => (
-            None,
-            struct_env.get_fields().collect::<Vec<_>>(),
-            struct_env.is_empty_struct(),
-        ),
-    };
 
-    let synthetic_fields = match kind {
-        ConstructorKind::OptionNone if is_empty && declared_fields.is_empty() => {
-            PackFields::Positional(vec![])
-        },
-        ConstructorKind::OptionNone => {
-            let field_name = declared_fields[0].get_name();
-            let vec_node = env.new_node(env.get_node_loc(call_node_id), Type::Tuple(vec![]));
-            PackFields::Named(vec![(field_name, AttributeValue::Vector(vec_node, vec![]))])
-        },
-        ConstructorKind::OptionSome if struct_env.has_variants() => {
-            let field_name = declared_fields[0].get_name();
-            PackFields::Named(vec![(field_name, args[0].clone())])
-        },
+    match kind {
+        ConstructorKind::OptionNone => Ok(wrap_in_option(&struct_env, None)),
         ConstructorKind::OptionSome => {
-            let field_name = declared_fields[0].get_name();
-            let e = args[0].clone();
-            let e_loc = env.get_node_loc(attribute_value_node_id(&e));
-            let vec_node = env.new_node(e_loc, Type::Tuple(vec![]));
-            PackFields::Named(vec![(
-                field_name,
-                AttributeValue::Vector(vec_node, vec![e]),
-            )])
+            let e = to_move_value(&args[0], &target_args[0], current_module, env)?;
+            Ok(wrap_in_option(&struct_env, Some(e)))
         },
         ConstructorKind::StringUtf8 => {
-            let field_name = declared_fields[0].get_name();
-            PackFields::Named(vec![(field_name, args[0].clone())])
+            let value =
+                build_single_field_struct(&struct_env, args[0].clone(), current_module, env)?;
+            let bytes = bytes_from_single_vector_field(&value);
+            if std::str::from_utf8(&bytes).is_err() {
+                return Err(ConversionError::InvalidUtf8 {
+                    node_id: attribute_value_node_id(&args[0]),
+                });
+            }
+            Ok(value)
         },
-    };
-
-    let move_value = build_struct_or_variant_value(
-        variant_tag,
-        declared_fields,
-        is_empty,
-        &synthetic_fields,
-        opt_type_args,
-        target_mid,
-        target_sid,
-        target_args,
-        current_module,
-        env,
-    )?;
-
-    if matches!(kind, ConstructorKind::StringUtf8) {
-        let bytes = utf8_bytes_from_string_value(&move_value);
-        if std::str::from_utf8(&bytes).is_err() {
-            return Err(ConversionError::InvalidUtf8 {
-                node_id: attribute_value_node_id(&args[0]),
-            });
-        }
+        ConstructorKind::OptionFromVec => {
+            let AttributeValue::Vector(vec_node_id, elems) = &args[0] else {
+                return Err(ConversionError::TypeMismatch {
+                    declared: env.get_node_type(attribute_value_node_id(&args[0])),
+                });
+            };
+            match elems.len() {
+                0 => Ok(wrap_in_option(&struct_env, None)),
+                1 => {
+                    let e = to_move_value(&elems[0], &target_args[0], current_module, env)?;
+                    Ok(wrap_in_option(&struct_env, Some(e)))
+                },
+                _ => Err(ConversionError::OptionVecTooLong {
+                    node_id: *vec_node_id,
+                }),
+            }
+        },
+        ConstructorKind::StringTryUtf8 => {
+            let string_name = env.symbol_pool().make("String");
+            let string_struct_env = func_env
+                .module_env
+                .find_struct(string_name)
+                .expect("std::string declares String alongside try_utf8");
+            let value = build_single_field_struct(
+                &string_struct_env,
+                args[0].clone(),
+                current_module,
+                env,
+            )?;
+            let bytes = bytes_from_single_vector_field(&value);
+            let payload = if std::str::from_utf8(&bytes).is_ok() {
+                Some(value)
+            } else {
+                None
+            };
+            Ok(wrap_in_option(&struct_env, payload))
+        },
+        ConstructorKind::AsciiString => {
+            let value =
+                build_single_field_struct(&struct_env, args[0].clone(), current_module, env)?;
+            let bytes = bytes_from_single_vector_field(&value);
+            if bytes.iter().any(|b| !is_valid_ascii_byte(*b)) {
+                return Err(ConversionError::InvalidAscii {
+                    node_id: attribute_value_node_id(&args[0]),
+                });
+            }
+            Ok(value)
+        },
+        ConstructorKind::AsciiTryString => {
+            let string_name = env.symbol_pool().make("String");
+            let ascii_string_struct_env = func_env
+                .module_env
+                .find_struct(string_name)
+                .expect("std::ascii declares String alongside try_string");
+            let value = build_single_field_struct(
+                &ascii_string_struct_env,
+                args[0].clone(),
+                current_module,
+                env,
+            )?;
+            let bytes = bytes_from_single_vector_field(&value);
+            let payload = if bytes.iter().all(|b| is_valid_ascii_byte(*b)) {
+                Some(value)
+            } else {
+                None
+            };
+            Ok(wrap_in_option(&struct_env, payload))
+        },
+        ConstructorKind::AsciiChar => {
+            let value =
+                build_single_field_struct(&struct_env, args[0].clone(), current_module, env)?;
+            let byte = byte_from_single_scalar_field(&value);
+            if !is_valid_ascii_byte(byte) {
+                return Err(ConversionError::InvalidAscii {
+                    node_id: attribute_value_node_id(&args[0]),
+                });
+            }
+            Ok(value)
+        },
     }
-
-    Ok(move_value)
 }
 
 /// Attribute-driven equivalent of `function_checker.rs::check_struct_op`'s Pack-visibility rule,
