@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: unsupported parameter type
+  ┌─ tests/unit_test/test/parametric_call_unknown_function.move:7:7
+  │
+7 │     #[test(w = helper(1))]
+  │       ^^^^^^^^^^^^^^^^^^^ no struct with this name was found
+8 │     fun test_call(w: Wrapper) {
+  │                   - corresponding to this parameter

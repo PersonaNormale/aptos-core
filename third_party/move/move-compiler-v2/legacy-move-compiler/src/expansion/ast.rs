@@ -40,22 +40,94 @@ pub struct Program {
 // Attributes
 //**************************************************************************************************
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum PackFields {
+    Named(Fields<AttributeValue>),
+    Positional(Vec<AttributeValue>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum AttributeValue_ {
     Value(Value),
     Module(ModuleIdent),
     ModuleAccess(ModuleAccess),
+    Vector(Option<Type>, Vec<AttributeValue>),
+    Pack(ModuleAccess, Option<Vec<Type>>, PackFields),
 }
 pub type AttributeValue = Spanned<AttributeValue_>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Attribute_ {
     Name(Name),
     Assigned(Name, Box<AttributeValue>),
     Parameterized(Name, Attributes),
 }
-pub type Attribute = Spanned<Attribute_>;
+
+/// Identifier shared by sibling attributes, relative to an item's attribute list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AttributeSiblingId(u16);
+
+impl AttributeSiblingId {
+    pub fn new(idx: u16) -> Self {
+        Self(idx)
+    }
+
+    pub fn as_u16(self) -> u16 {
+        self.0
+    }
+}
+
+/// Mints the `AttributeSiblingId` shared by an item's sibling attributes.
+pub struct AttributeSiblingIdGenerator {
+    next: u16,
+}
+
+impl AttributeSiblingIdGenerator {
+    pub fn new() -> Self {
+        Self { next: 0 }
+    }
+
+    pub fn mint(&mut self) -> AttributeSiblingId {
+        let id = AttributeSiblingId::new(self.next);
+        self.next = self
+            .next
+            .checked_add(1)
+            .expect("AttributeSiblingId overflow");
+        id
+    }
+}
+
+impl Default for AttributeSiblingIdGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attribute {
+    pub loc: Loc,
+    pub attribute_sibling_id: AttributeSiblingId,
+    pub value: Attribute_,
+}
+
+impl Attribute {
+    pub fn new(loc: Loc, attribute_sibling_id: AttributeSiblingId, value: Attribute_) -> Self {
+        Self {
+            loc,
+            attribute_sibling_id,
+            value,
+        }
+    }
+
+    pub fn attribute_name(&self) -> &Name {
+        self.value.attribute_name()
+    }
+
+    pub fn attribute_sibling_id(&self) -> AttributeSiblingId {
+        self.attribute_sibling_id
+    }
+}
 
 impl Attribute_ {
     pub fn attribute_name(&self) -> &Name {
@@ -74,7 +146,7 @@ pub enum AttributeName_ {
 }
 pub type AttributeName = Spanned<AttributeName_>;
 
-pub type Attributes = UniqueMap<AttributeName, Attribute>;
+pub type Attributes = Vec<Attribute>;
 
 //**************************************************************************************************
 // Scripts
@@ -1095,6 +1167,40 @@ impl AstDebug for AttributeValue_ {
             AttributeValue_::Value(v) => v.ast_debug(w),
             AttributeValue_::Module(m) => w.write(format!("{}", m)),
             AttributeValue_::ModuleAccess(n) => n.ast_debug(w),
+            AttributeValue_::Vector(ty_opt, elems) => {
+                w.write("vector");
+                if let Some(ty) = ty_opt {
+                    w.write("<");
+                    ty.ast_debug(w);
+                    w.write(">");
+                }
+                w.write("[");
+                w.comma(elems, |w, e| e.ast_debug(w));
+                w.write("]");
+            },
+            AttributeValue_::Pack(n, tys_opt, fields) => {
+                n.ast_debug(w);
+                if let Some(tys) = tys_opt {
+                    w.write("<");
+                    w.comma(tys, |w, ty| ty.ast_debug(w));
+                    w.write(">");
+                }
+                match fields {
+                    PackFields::Named(fs) => {
+                        w.write(" { ");
+                        w.comma(fs.key_cloned_iter(), |w, (f, (_, v))| {
+                            w.write(format!("{}: ", f));
+                            v.ast_debug(w);
+                        });
+                        w.write(" }");
+                    },
+                    PackFields::Positional(es) => {
+                        w.write("(");
+                        w.comma(es, |w, e| e.ast_debug(w));
+                        w.write(")");
+                    },
+                }
+            },
         }
     }
 }
@@ -1111,7 +1217,7 @@ impl AstDebug for Attribute_ {
             Attribute_::Parameterized(n, inners) => {
                 w.write(format!("{}", n));
                 w.write("(");
-                w.list(inners, ", ", |w, (_, _, inner)| {
+                w.list(inners, ", ", |w, inner| {
                     inner.ast_debug(w);
                     false
                 });
@@ -1121,10 +1227,21 @@ impl AstDebug for Attribute_ {
     }
 }
 
+impl AstDebug for Attribute {
+    fn ast_debug(&self, w: &mut AstWriter) {
+        let Attribute {
+            loc: _loc,
+            attribute_sibling_id: _attribute_sibling_id,
+            value,
+        } = self;
+        value.ast_debug(w);
+    }
+}
+
 impl AstDebug for Attributes {
     fn ast_debug(&self, w: &mut AstWriter) {
         w.write("#[");
-        w.list(self, ", ", |w, (_, _, attr)| {
+        w.list(self, ", ", |w, attr| {
             attr.ast_debug(w);
             false
         });

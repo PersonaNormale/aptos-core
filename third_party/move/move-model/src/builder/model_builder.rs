@@ -593,6 +593,23 @@ impl<'env> ModelBuilder<'env> {
         self.const_table.insert(name, entry);
     }
 
+    /// Retains builtin range constants for lookup after model building.
+    /// Call once, after `populate_env()`.
+    pub fn register_builtin_constants(&mut self) {
+        assert!(
+            self.env.builtin_constants.borrow().is_empty(),
+            "register_builtin_constants must not run more than once per GlobalEnv"
+        );
+        let builtin_module_name = self.builtin_module();
+        let builtin_constants: BTreeMap<Symbol, (Value, Type)> = self
+            .const_table
+            .iter()
+            .filter(|(sym, _)| sym.module_name == builtin_module_name)
+            .map(|(sym, entry)| (sym.symbol, (entry.value.clone(), entry.ty.clone())))
+            .collect();
+        *self.env.builtin_constants.borrow_mut() = builtin_constants;
+    }
+
     /// Injects a `const$<NAME>` accessor function for every non-private constant in every module.
     /// Must run after `populate_env()` and before `add_friend_decl_for_package_visibility()`.
     pub fn inject_const_accessor_functions(&mut self) {

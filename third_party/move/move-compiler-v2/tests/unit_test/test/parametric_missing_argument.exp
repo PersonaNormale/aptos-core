@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: missing parameter assignment
+  ┌─ tests/unit_test/test/parametric_missing_argument.move:4:7
+  │
+4 │     #[test(a = @0x1)]
+  │       ^^^^^^^^^^^^^^ expected a parameter to be assigned in this attribute
+5 │     fun missing_argument(a: signer, b: address) {
+  │                                     - corresponding to this parameter

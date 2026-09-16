@@ -74,6 +74,23 @@ impl From<U256> for BigInt {
     }
 }
 
+impl TryFrom<BigInt> for U256 {
+    type Error = anyhow::Error;
+
+    fn try_from(value: BigInt) -> Result<Self, Self::Error> {
+        if value.sign() == Sign::Minus {
+            anyhow::bail!("value is negative, cannot convert to U256");
+        }
+        let (_, magnitude) = value.to_bytes_le();
+        if magnitude.len() > 32 {
+            anyhow::bail!("value out of range for U256");
+        }
+        let mut bytes = [0u8; 32];
+        bytes[..magnitude.len()].copy_from_slice(&magnitude);
+        Ok(U256::from_le_bytes(bytes))
+    }
+}
+
 impl std::fmt::Debug for U256 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "U256({})", self.repr)
@@ -136,6 +153,25 @@ impl From<I256> for ethnum::I256 {
 impl From<I256> for BigInt {
     fn from(value: I256) -> Self {
         BigInt::from_signed_bytes_le(&value.to_le_bytes())
+    }
+}
+
+impl TryFrom<BigInt> for I256 {
+    type Error = anyhow::Error;
+
+    fn try_from(value: BigInt) -> Result<Self, Self::Error> {
+        let signed_bytes = value.to_signed_bytes_le();
+        if signed_bytes.len() > 32 {
+            anyhow::bail!("value out of range for I256");
+        }
+        let fill = if value.sign() == Sign::Minus {
+            0xFFu8
+        } else {
+            0u8
+        };
+        let mut bytes = [fill; 32];
+        bytes[..signed_bytes.len()].copy_from_slice(&signed_bytes);
+        Ok(I256::from_le_bytes(bytes))
     }
 }
 
@@ -440,5 +476,57 @@ impl TryFrom<U256> for I256 {
     fn try_from(value: U256) -> Result<Self, Self::Error> {
         let repr: ethnum::I256 = value.repr.try_into()?;
         Ok(I256 { repr })
+    }
+}
+
+#[cfg(test)]
+mod bigint_conversion_tests {
+    use super::*;
+
+    #[test]
+    fn u256_roundtrip_zero_one_max() {
+        for value in [U256::ZERO, U256::ONE, U256::MAX] {
+            let big: BigInt = value.into();
+            assert_eq!(U256::try_from(big).unwrap(), value);
+        }
+    }
+
+    #[test]
+    fn u256_rejects_negative() {
+        let big = BigInt::from(-1);
+        assert!(U256::try_from(big).is_err());
+    }
+
+    #[test]
+    fn u256_rejects_above_max() {
+        let big: BigInt = BigInt::from(U256::MAX) + BigInt::from(1);
+        assert!(U256::try_from(big).is_err());
+    }
+
+    #[test]
+    fn i256_roundtrip_zero_min_max() {
+        for value in [I256::ZERO, I256::MIN, I256::MAX] {
+            let big: BigInt = value.into();
+            assert_eq!(I256::try_from(big).unwrap(), value);
+        }
+    }
+
+    #[test]
+    fn i256_roundtrip_negative_one() {
+        let value = -I256::ONE;
+        let big = BigInt::from(-1);
+        assert_eq!(I256::try_from(big).unwrap(), value);
+    }
+
+    #[test]
+    fn i256_rejects_above_max() {
+        let big: BigInt = BigInt::from(I256::MAX) + BigInt::from(1);
+        assert!(I256::try_from(big).is_err());
+    }
+
+    #[test]
+    fn i256_rejects_below_min() {
+        let big: BigInt = BigInt::from(I256::MIN) - BigInt::from(1);
+        assert!(I256::try_from(big).is_err());
     }
 }

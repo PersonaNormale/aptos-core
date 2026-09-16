@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: literal out of range
+  ┌─ tests/unit_test/test/parametric_i16_out_of_range_below.move:4:7
+  │
+4 │     #[test(x = -32769)]
+  │       ^^^^^^^^^^^^^^^^ value must be between `-32768` and `32767` for this parameter
+5 │     fun out_of_range(x: i16) {
+  │                      - corresponding to this parameter

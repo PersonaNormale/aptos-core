@@ -11,6 +11,7 @@
 
 use anyhow::{bail, ensure, Context, Result};
 use codespan::Span;
+use legacy_move_compiler::expansion::ast::AttributeSiblingIdGenerator;
 use move_binary_format::file_format::Visibility as MoveVisibility;
 use move_command_line_common::files::FileHash;
 use move_core_types::{
@@ -21,8 +22,8 @@ use move_core_types::{
 use move_model::{
     ast::{Address, Attribute, AttributeValue, ModuleName, Value},
     model::{
-        FieldData, FunId, FunctionKind, GlobalEnv, Loc, ModuleId, Parameter, QualifiedId, StructId,
-        TypeParameter, TypeParameterKind,
+        AttributeSiblingId, FieldData, FunId, FunctionKind, GlobalEnv, Loc, ModuleId, Parameter,
+        QualifiedId, StructId, TypeParameter, TypeParameterKind,
     },
     ty::{PrimitiveType, ReferenceKind, Type},
     xir_loader::{
@@ -381,43 +382,76 @@ fn external_modules_available(env: &GlobalEnv, xir: &XirModule) -> bool {
     })
 }
 
-fn model_attribute(env: &mut GlobalEnv, loc: &Loc, attribute: &XirAttribute) -> Result<Attribute> {
-    model_attribute_apply(env, loc, &attribute.name, &attribute.args)
+fn model_attributes(
+    env: &mut GlobalEnv,
+    loc: &Loc,
+    attributes: &[XirAttribute],
+) -> Result<Vec<Attribute>> {
+    let mut sibling_ids = AttributeSiblingIdGenerator::new();
+    attributes
+        .iter()
+        .map(|attribute| {
+            model_attribute_apply(
+                env,
+                loc,
+                sibling_ids.mint(),
+                &attribute.name,
+                &attribute.args,
+            )
+        })
+        .collect()
 }
 
 fn model_attribute_apply(
     env: &mut GlobalEnv,
     loc: &Loc,
+    attribute_sibling_id: AttributeSiblingId,
     name: &str,
     args: &[XirAttributeArg],
 ) -> Result<Attribute> {
-    let node_id = env.new_node(loc.clone(), Type::Tuple(vec![]));
     let symbol = env.symbol_pool().make(name);
     match args {
-        [XirAttributeArg::Num { value }] => Ok(Attribute::Assign(
-            node_id,
-            symbol,
-            AttributeValue::Value(node_id, Value::Number(value.parse()?)),
-        )),
-        [XirAttributeArg::Bool { value }] => Ok(Attribute::Assign(
-            node_id,
-            symbol,
-            AttributeValue::Value(node_id, Value::Bool(*value)),
-        )),
-        _ => Ok(Attribute::Apply(
-            node_id,
-            symbol,
-            args.iter()
+        [XirAttributeArg::Num { value }] => {
+            let value_node_id = env.new_node(loc.clone(), Type::Tuple(vec![]));
+            Ok(Attribute::new_assign(
+                env,
+                loc.clone(),
+                attribute_sibling_id,
+                symbol,
+                AttributeValue::Value(value_node_id, Value::Number(value.parse()?)),
+            ))
+        },
+        [XirAttributeArg::Bool { value }] => {
+            let value_node_id = env.new_node(loc.clone(), Type::Tuple(vec![]));
+            Ok(Attribute::new_assign(
+                env,
+                loc.clone(),
+                attribute_sibling_id,
+                symbol,
+                AttributeValue::Value(value_node_id, Value::Bool(*value)),
+            ))
+        },
+        _ => {
+            let mut sibling_ids = AttributeSiblingIdGenerator::new();
+            let attrs = args
+                .iter()
                 .map(|arg| match arg {
                     XirAttributeArg::Name { name, args } => {
-                        model_attribute_apply(env, loc, name, args)
+                        model_attribute_apply(env, loc, sibling_ids.mint(), name, args)
                     },
                     XirAttributeArg::Num { .. } | XirAttributeArg::Bool { .. } => {
                         bail!("attribute `{name}` has an unnamed literal argument")
                     },
                 })
-                .collect::<Result<Vec<_>>>()?,
-        )),
+                .collect::<Result<Vec<_>>>()?;
+            Ok(Attribute::new_apply(
+                env,
+                loc.clone(),
+                attribute_sibling_id,
+                symbol,
+                attrs,
+            ))
+        },
     }
 }
 
@@ -557,11 +591,7 @@ fn import_source(
             } else {
                 FunctionKind::Regular
             },
-            attributes: decl
-                .attributes
-                .iter()
-                .map(|attribute| model_attribute(env, &function_loc, attribute))
-                .collect::<Result<Vec<_>>>()?,
+            attributes: model_attributes(env, &function_loc, &decl.attributes)?,
             type_parameters: model_type_parameters(env, &function_loc, &decl.type_parameters)?,
             params,
             result_type: returns,
@@ -2422,30 +2452,32 @@ mod tests {
             assert_eq!(pool.string(attribute.name()).as_str(), expected_name);
         };
         assert_name(&attributes[0], "module_lock");
-        assert!(matches!(attributes[0], Attribute::Apply(_, _, ref args) if args.is_empty()));
+        assert!(
+            matches!(attributes[0], Attribute::Apply { attrs: ref args, .. } if args.is_empty())
+        );
         assert_name(&attributes[1], "randomness");
         assert!(matches!(
             attributes[1],
-            Attribute::Assign(_, _, AttributeValue::Value(_, Value::Number(ref value)))
+            Attribute::Assign { value: AttributeValue::Value(_, Value::Number(ref value)), .. }
                 if value == &7.into()
         ));
         assert_name(&attributes[2], "test_only");
-        assert!(matches!(
-            attributes[2],
-            Attribute::Assign(_, _, AttributeValue::Value(_, Value::Bool(true)))
-        ));
+        assert!(matches!(attributes[2], Attribute::Assign {
+            value: AttributeValue::Value(_, Value::Bool(true)),
+            ..
+        }));
         assert_name(&attributes[3], "lint.skip");
-        let Attribute::Apply(_, _, nested) = &attributes[3] else {
+        let Attribute::Apply { attrs: nested, .. } = &attributes[3] else {
             panic!("expected nested name attribute")
         };
         assert_eq!(nested.len(), 1);
         assert_name(&nested[0], "complexity");
-        let Attribute::Apply(_, _, nested) = &nested[0] else {
+        let Attribute::Apply { attrs: nested, .. } = &nested[0] else {
             panic!("expected nested name attribute")
         };
         assert_eq!(nested.len(), 1);
         assert_name(&nested[0], "cyclomatic");
-        assert!(matches!(nested[0], Attribute::Apply(_, _, ref args) if args.is_empty()));
+        assert!(matches!(nested[0], Attribute::Apply { attrs: ref args, .. } if args.is_empty()));
     }
 
     #[test]

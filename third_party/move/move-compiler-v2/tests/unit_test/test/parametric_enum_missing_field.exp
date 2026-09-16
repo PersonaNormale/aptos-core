@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: missing struct fields
+  ┌─ tests/unit_test/test/parametric_enum_missing_field.move:5:7
+  │
+5 │     #[test(s = Shape::Circle { radius: 5 })]
+  │       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing field(s): height
+6 │     fun missing_field(s: Shape) {
+  │                       - corresponding to this parameter

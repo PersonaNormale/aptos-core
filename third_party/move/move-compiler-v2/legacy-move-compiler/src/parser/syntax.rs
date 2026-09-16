@@ -678,17 +678,128 @@ fn parse_visibility(context: &mut Context) -> Result<Visibility, Box<Diagnostic>
     })
 }
 
-// Parse an attribute value. Either a value literal or a module access
+// Parse a literal, module access, vector, or struct/variant construction in an attribute.
 //      AttributeValue =
 //          <Value>
 //          | <NameAccessChain>
+//          | "vector" ('<' Type '>')? "[" Comma<AttributeValue> "]"
+//          | <NameAccessChain> ('<' Comma<Type> '>')? "{" Comma<AttributeField> "}"
+//          | <NameAccessChain> ('<' Comma<Type> '>')? "(" Comma<AttributeValue> ")"
 fn parse_attribute_value(context: &mut Context) -> Result<AttributeValue, Box<Diagnostic>> {
-    if let Some(v) = maybe_parse_value(context)? {
+    const VECTOR_IDENT: &str = "vector";
+
+    if context.tokens.peek() == Tok::Minus {
+        if let Some(v) = maybe_parse_negative_num_literal(context)? {
+            return Ok(sp(v.loc, AttributeValue_::Value(v)));
+        }
+    } else if let Some(v) = maybe_parse_value(context)? {
         return Ok(sp(v.loc, AttributeValue_::Value(v)));
+    } else if context.tokens.peek() == Tok::Identifier
+        && context.tokens.content() == VECTOR_IDENT
+        && matches!(context.tokens.lookahead(), Ok(Tok::Less | Tok::LBracket))
+    {
+        let start_loc = context.tokens.start_loc();
+        consume_identifier(context.tokens, VECTOR_IDENT)?;
+        let targs_start_loc = context.tokens.start_loc();
+        let tys_opt = parse_optional_type_args(context).map_err(|diag| {
+            let targ_loc = make_loc(context.tokens.file_hash(), targs_start_loc, targs_start_loc);
+            add_type_args_ambiguity_label(targ_loc, diag)
+        })?;
+        let ty = match tys_opt {
+            None => None,
+            Some(mut tys) if tys.len() == 1 => Some(tys.pop().expect("len == 1 checked above")),
+            Some(tys) => {
+                let loc = make_loc(
+                    context.tokens.file_hash(),
+                    targs_start_loc,
+                    context.tokens.previous_end_loc(),
+                );
+                return Err(Box::new(diag!(
+                    Syntax::UnexpectedToken,
+                    (
+                        loc,
+                        format!(
+                            "'vector' literal expects exactly one type argument, found {}",
+                            tys.len()
+                        )
+                    )
+                )));
+            },
+        };
+        let elems = parse_comma_list(
+            context,
+            Tok::LBracket,
+            Tok::RBracket,
+            parse_attribute_value,
+            "a vector element value",
+        )?;
+        let end_loc = context.tokens.previous_end_loc();
+        let loc = make_loc(context.tokens.file_hash(), start_loc, end_loc);
+        return Ok(sp(loc, AttributeValue_::Vector(ty, elems)));
     }
 
+    // Attribute values have no comparison operators, so `<` always starts type arguments.
+    let start_loc = context.tokens.start_loc();
     let ma = parse_name_access_chain(context, false, || "attribute name value")?;
-    Ok(sp(ma.loc, AttributeValue_::ModuleAccess(ma)))
+    let targs_start_loc = context.tokens.start_loc();
+    let tys_opt = parse_optional_type_args(context).map_err(|diag| {
+        let targ_loc = make_loc(context.tokens.file_hash(), targs_start_loc, targs_start_loc);
+        add_type_args_ambiguity_label(targ_loc, diag)
+    })?;
+    match context.tokens.peek() {
+        Tok::LBrace => {
+            let fields = parse_comma_list(
+                context,
+                Tok::LBrace,
+                Tok::RBrace,
+                parse_attribute_value_field,
+                "a struct field value",
+            )?;
+            let end_loc = context.tokens.previous_end_loc();
+            let loc = make_loc(context.tokens.file_hash(), start_loc, end_loc);
+            Ok(sp(
+                loc,
+                AttributeValue_::Pack(ma, tys_opt, PackFields::Named(fields)),
+            ))
+        },
+        Tok::LParen => {
+            let elems = parse_comma_list(
+                context,
+                Tok::LParen,
+                Tok::RParen,
+                parse_attribute_value,
+                "a positional field value",
+            )?;
+            let end_loc = context.tokens.previous_end_loc();
+            let loc = make_loc(context.tokens.file_hash(), start_loc, end_loc);
+            Ok(sp(
+                loc,
+                AttributeValue_::Pack(ma, tys_opt, PackFields::Positional(elems)),
+            ))
+        },
+        _ if tys_opt.is_some() => {
+            let loc = make_loc(
+                context.tokens.file_hash(),
+                targs_start_loc,
+                context.tokens.previous_end_loc(),
+            );
+            Err(Box::new(diag!(
+                Syntax::UnexpectedToken,
+                (loc, "expected '{' or '(' after type arguments".to_string())
+            )))
+        },
+        _ => Ok(sp(ma.loc, AttributeValue_::ModuleAccess(ma))),
+    }
+}
+
+// Parse an attribute field: `<Field> ":" <AttributeValue>`. Local-variable shorthand is unavailable.
+fn parse_attribute_value_field(
+    context: &mut Context,
+) -> Result<(Field, AttributeValue), Box<Diagnostic>> {
+    let f = parse_field(context)?;
+    consume_token(context.tokens, Tok::Colon)?;
+    let v = parse_attribute_value(context)?;
+    Ok((f, v))
 }
 
 // Parse a single attribute
@@ -816,35 +927,42 @@ fn parse_typed_bind(context: &mut Context) -> Result<TypedBind, Box<Diagnostic>>
     ))
 }
 
+// Called at `-`. Parses a negative numeral, or leaves tokens untouched and returns `None`
+// for other forms, including module accesses such as `-0x1::module`.
+fn maybe_parse_negative_num_literal(
+    context: &mut Context,
+) -> Result<Option<Value>, Box<Diagnostic>> {
+    let is_negative_literal = match context.tokens.lookahead2()? {
+        (Tok::NumTypedValue, _) => true,
+        (Tok::NumValue, after) => after != Tok::ColonColon,
+        _ => false,
+    };
+    if !is_negative_literal {
+        return Ok(None);
+    }
+    let start_loc = context.tokens.start_loc();
+    context.tokens.advance()?; // consume `-`
+    let val = parse_value(context)?;
+    let end_loc = context.tokens.previous_end_loc();
+    let neg_num = match val.value {
+        Value_::Num(s) => Value_::Num(Symbol::from(format!("-{}", s.as_str()))),
+        _ => unreachable!("expected numeric value after minus in a negative literal"),
+    };
+    Ok(Some(spanned(
+        context.tokens.file_hash(),
+        start_loc,
+        end_loc,
+        neg_num,
+    )))
+}
+
 // Try to parse a literal value usable in a match pattern. Handles non-negative
 // numeric literals, bools, byte strings, and negative numeric literals (e.g. -1i8).
 // Returns `Ok(None)` if the current position doesn't start a literal pattern.
 fn maybe_parse_literal_pattern(context: &mut Context) -> Result<Option<Value>, Box<Diagnostic>> {
     let tok = context.tokens.peek();
-    // Negative numeric literal: `-` followed by a number, but not `-0x1::module`.
     if tok == Tok::Minus {
-        let is_negative_literal = match context.tokens.lookahead2()? {
-            (Tok::NumTypedValue, _) => true,
-            (Tok::NumValue, after) => after != Tok::ColonColon,
-            _ => false,
-        };
-        if is_negative_literal {
-            let start_loc = context.tokens.start_loc();
-            context.tokens.advance()?; // consume `-`
-            let val = parse_value(context)?;
-            let end_loc = context.tokens.previous_end_loc();
-            let neg_num = match val.value {
-                Value_::Num(s) => Value_::Num(Symbol::from(format!("-{}", s.as_str()))),
-                _ => unreachable!("expected numeric value after minus in pattern"),
-            };
-            return Ok(Some(spanned(
-                context.tokens.file_hash(),
-                start_loc,
-                end_loc,
-                neg_num,
-            )));
-        }
-        return Ok(None);
+        return maybe_parse_negative_num_literal(context);
     }
     // Positive literal: bool, typed number, byte string, or untyped number
     // (excluding `NumValue ::` which is a module access like `0x1::module`).

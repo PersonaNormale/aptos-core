@@ -102,7 +102,7 @@ pub enum Use {
     Members(ModuleIdent, Vec<(Name, Option<Name>)>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UseDecl {
     pub attributes: Vec<Attributes>,
     pub use_: Use,
@@ -112,14 +112,22 @@ pub struct UseDecl {
 // Attributes
 //**************************************************************************************************
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum PackFields {
+    Named(Vec<(Field, AttributeValue)>),
+    Positional(Vec<AttributeValue>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AttributeValue_ {
     Value(Value),
     ModuleAccess(NameAccessChain),
+    Vector(Option<Type>, Vec<AttributeValue>),
+    Pack(NameAccessChain, Option<Vec<Type>>, PackFields),
 }
 pub type AttributeValue = Spanned<AttributeValue_>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Attribute_ {
     Name(Name),
     Assigned(Name, Box<AttributeValue>),
@@ -1340,6 +1348,40 @@ impl AstDebug for AttributeValue_ {
         match self {
             AttributeValue_::Value(v) => v.ast_debug(w),
             AttributeValue_::ModuleAccess(n) => n.ast_debug(w),
+            AttributeValue_::Vector(ty_opt, elems) => {
+                w.write("vector");
+                if let Some(ty) = ty_opt {
+                    w.write("<");
+                    ty.ast_debug(w);
+                    w.write(">");
+                }
+                w.write("[");
+                w.comma(elems, |w, e| e.ast_debug(w));
+                w.write("]");
+            },
+            AttributeValue_::Pack(n, tys_opt, fields) => {
+                n.ast_debug(w);
+                if let Some(tys) = tys_opt {
+                    w.write("<");
+                    w.comma(tys, |w, ty| ty.ast_debug(w));
+                    w.write(">");
+                }
+                match fields {
+                    PackFields::Named(fs) => {
+                        w.write(" { ");
+                        w.comma(fs, |w, (f, v)| {
+                            w.write(format!("{}: ", f));
+                            v.ast_debug(w);
+                        });
+                        w.write(" }");
+                    },
+                    PackFields::Positional(es) => {
+                        w.write("(");
+                        w.comma(es, |w, e| e.ast_debug(w));
+                        w.write(")");
+                    },
+                }
+            },
         }
     }
 }

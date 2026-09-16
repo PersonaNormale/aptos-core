@@ -6,7 +6,7 @@
 use move_core_types::{
     account_address::AccountAddress, identifier::Identifier, language_storage::ModuleId,
 };
-use move_unit_test::{self, UnitTestingConfig};
+use move_unit_test::UnitTestingConfig;
 use std::path::PathBuf;
 
 // Make sure the compiled bytecode for dependencies is included, but the tests in them are not run.

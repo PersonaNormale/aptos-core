@@ -10,7 +10,9 @@ use legacy_move_compiler::parser::keywords::{BUILTINS, CONTEXTUAL_KEYWORDS, KEYW
 use log::info;
 use move_core_types::{ability::AbilitySet, account_address::AccountAddress};
 use move_model::{
-    ast::{Address, Attribute, AttributeValue, ModuleName, SpecBlockInfo, SpecBlockTarget},
+    ast::{
+        Address, Attribute, AttributeValue, ModuleName, PackFields, SpecBlockInfo, SpecBlockTarget,
+    },
     code_writer::{CodeWriter, CodeWriterLabel},
     emit, emitln,
     model::{
@@ -638,7 +640,11 @@ impl<'env> Docgen<'env> {
     /// Gets a readable version of an attribute.
     fn gen_attribute(&self, attribute: &Attribute) -> String {
         let annotation_body: String = match attribute {
-            Attribute::Apply(_node_id, symbol, attribute_vector) => {
+            Attribute::Apply {
+                name: symbol,
+                attrs: attribute_vector,
+                ..
+            } => {
                 let symbol_string = self.name_string(*symbol).to_string();
                 if attribute_vector.is_empty() {
                     symbol_string
@@ -647,27 +653,93 @@ impl<'env> Docgen<'env> {
                     format!("{}({})", symbol_string, value_string)
                 }
             },
-            Attribute::Assign(_node_id, symbol, attribute_value) => {
+            Attribute::Assign {
+                name: symbol,
+                value: attribute_value,
+                ..
+            } => {
                 let symbol_string = self.name_string(*symbol).to_string();
-                match attribute_value {
-                    AttributeValue::Value(_node_id, value) => {
-                        let value_string = self.env.display(value);
-                        format!("{} = {}", symbol_string, value_string)
-                    },
-                    AttributeValue::Name(_node_id, module_name_option, symbol2) => {
-                        let symbol2_name = self.name_string(*symbol2).to_string();
-                        let module_prefix = match module_name_option {
-                            None => "".to_string(),
-                            Some(module_name) => {
-                                format!("{}::", module_name.display_full(self.env))
-                            },
-                        };
-                        format!("{} = {}{}", symbol_string, module_prefix, symbol2_name)
-                    },
-                }
+                format!(
+                    "{} = {}",
+                    symbol_string,
+                    self.gen_attribute_value(attribute_value)
+                )
             },
         };
         annotation_body
+    }
+
+    /// Formats an attribute value, including nested vectors, structs, and variants.
+    fn gen_attribute_value(&self, attribute_value: &AttributeValue) -> String {
+        match attribute_value {
+            AttributeValue::Value(_node_id, value) => self.env.display(value).to_string(),
+            AttributeValue::Name(_node_id, module_name_option, symbol2) => {
+                let symbol2_name = self.name_string(*symbol2).to_string();
+                let module_prefix = match module_name_option {
+                    None => "".to_string(),
+                    Some(module_name) => format!("{}::", module_name.display_full(self.env)),
+                };
+                format!("{}{}", module_prefix, symbol2_name)
+            },
+            AttributeValue::Vector(_node_id, explicit_ty, elems) => {
+                let elems_string = elems.iter().map(|e| self.gen_attribute_value(e)).join(", ");
+                match explicit_ty {
+                    Some(inner) => {
+                        let tctx = TypeDisplayContext::new(self.env);
+                        format!("vector<{}>[{}]", inner.display(&tctx), elems_string)
+                    },
+                    None => format!("vector[{}]", elems_string),
+                }
+            },
+            AttributeValue::Pack(
+                _node_id,
+                module_name_option,
+                name,
+                variant,
+                opt_type_args,
+                fields,
+            ) => {
+                let name_str = self.name_string(*name).to_string();
+                let module_prefix = match module_name_option {
+                    None => "".to_string(),
+                    Some(module_name) => format!("{}::", module_name.display_full(self.env)),
+                };
+                let type_args_str = match opt_type_args {
+                    None => "".to_string(),
+                    Some(tys) => {
+                        let tctx = TypeDisplayContext::new(self.env);
+                        format!("<{}>", tys.iter().map(|ty| ty.display(&tctx)).join(", "))
+                    },
+                };
+                let variant_str = match variant {
+                    None => "".to_string(),
+                    Some(v) => format!("::{}", self.name_string(*v)),
+                };
+                let name_str = format!("{}{}{}", name_str, type_args_str, variant_str);
+                match fields {
+                    PackFields::Named(named) => {
+                        let fields_str = named
+                            .iter()
+                            .map(|(sym, v)| {
+                                format!(
+                                    "{}: {}",
+                                    self.name_string(*sym),
+                                    self.gen_attribute_value(v)
+                                )
+                            })
+                            .join(", ");
+                        format!("{}{} {{ {} }}", module_prefix, name_str, fields_str)
+                    },
+                    PackFields::Positional(positional) => {
+                        let values_str = positional
+                            .iter()
+                            .map(|v| self.gen_attribute_value(v))
+                            .join(", ");
+                        format!("{}{}({})", module_prefix, name_str, values_str)
+                    },
+                }
+            },
+        }
     }
 
     /// Returns attributes as vector of Strings like #[attr].

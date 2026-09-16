@@ -359,15 +359,15 @@ impl ExtendedChecker<'_> {
         let module_id = self.get_runtime_module_id(module);
 
         for ref struct_ in module.get_structs() {
-            let resource_group = struct_.get_attributes().iter().find(|attr| {
-                if let Attribute::Apply(_, name, _) = attr {
-                    self.env.symbol_pool().string(*name).as_str() == RESOURCE_GROUP_MEMBER
-                } else {
-                    false
-                }
-            });
+            let resource_group = struct_
+                .get_attributes()
+                .iter()
+                .find(|attr| attr.is_apply_named(self.env.symbol_pool(), RESOURCE_GROUP_MEMBER));
 
-            if let Some(Attribute::Apply(_, _, attributes)) = resource_group {
+            if let Some(Attribute::Apply {
+                attrs: attributes, ..
+            }) = resource_group
+            {
                 if !struct_.get_abilities().has_ability(Ability::Key) {
                     self.env
                         .error(&struct_.get_loc(), "resource_group should have key ability");
@@ -381,7 +381,7 @@ impl ExtendedChecker<'_> {
                     );
                 }
 
-                let value = if let Attribute::Assign(_, name, value) = &attributes[0] {
+                let value = if let Attribute::Assign { name, value, .. } = &attributes[0] {
                     if self.env.symbol_pool().string(*name).as_str() != RESOURCE_GROUP_NAME {
                         self.env.error(
                             &struct_.get_loc(),
@@ -478,13 +478,10 @@ impl ExtendedChecker<'_> {
     }
 
     fn get_resource_group(&mut self, struct_: &StructEnv) -> Option<ResourceGroupScope> {
-        let container = struct_.get_attributes().iter().find(|attr| {
-            if let Attribute::Apply(_, name, _) = attr {
-                self.name_string(*name).as_ref() == RESOURCE_GROUP
-            } else {
-                false
-            }
-        })?;
+        let container = struct_
+            .get_attributes()
+            .iter()
+            .find(|attr| attr.is_apply_named(self.env.symbol_pool(), RESOURCE_GROUP))?;
 
         // Every struct contains the "dummy_field".
         if struct_.get_field_count() == 1 {
@@ -519,7 +516,10 @@ impl ExtendedChecker<'_> {
             return None;
         }
 
-        if let Attribute::Apply(_, _, attributes) = container {
+        if let Attribute::Apply {
+            attrs: attributes, ..
+        } = container
+        {
             if attributes.len() != 1 {
                 self.env.error(
                     &struct_.get_loc(),
@@ -528,7 +528,7 @@ impl ExtendedChecker<'_> {
                 return None;
             }
 
-            let value = if let Attribute::Assign(_, name, value) = &attributes[0] {
+            let value = if let Attribute::Assign { name, value, .. } = &attributes[0] {
                 if self.name_string(*name).as_str() != RESOURCE_GROUP_SCOPE {
                     self.env.error(
                         &struct_.get_loc(),
@@ -611,19 +611,27 @@ impl ExtendedChecker<'_> {
         fun: &FunctionEnv,
     ) -> Result<Option<RandomnessAnnotation>, String> {
         for attr in fun.get_attributes() {
-            let Attribute::Apply(_, name, sub_attrs) = attr else {
-                continue;
-            };
-            if self.env.symbol_pool().string(*name).as_str() != RANDOMNESS_ATTRIBUTE {
+            if !attr.is_apply_named(self.env.symbol_pool(), RANDOMNESS_ATTRIBUTE) {
                 continue;
             }
+            let Attribute::Apply {
+                attrs: sub_attrs, ..
+            } = attr
+            else {
+                continue;
+            };
             if sub_attrs.len() >= 2 {
                 return Err(
                     "Randomness attribute should only have one `max_gas` property.".to_string(),
                 );
             }
             if let Some(sub_attr) = sub_attrs.first() {
-                let Attribute::Assign(_, key_symbol, attr_val) = sub_attr else {
+                let Attribute::Assign {
+                    name: key_symbol,
+                    value: attr_val,
+                    ..
+                } = sub_attr
+                else {
                     return Err(
                         "Randomness attribute should only have one `max_gas` property.".to_string(),
                     );
@@ -944,13 +952,7 @@ impl<'a> ExtendedChecker<'a> {
         mut attrs: impl Iterator<Item = &'a Attribute>,
         attr_name: &str,
     ) -> bool {
-        attrs.any(|attr| {
-            if let Attribute::Apply(_, name, _) = attr {
-                self.env.symbol_pool().string(*name).as_str() == attr_name
-            } else {
-                false
-            }
-        })
+        attrs.any(|attr| attr.is_apply_named(self.env.symbol_pool(), attr_name))
     }
 
     fn get_runtime_module_id(&self, module: &ModuleEnv<'_>) -> ModuleId {

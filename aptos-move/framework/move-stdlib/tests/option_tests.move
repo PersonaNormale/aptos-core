@@ -225,4 +225,11 @@ module std::option_tests {
         let r = option::some(1).any(|e| *e == 1);
         assert!(r, 0);
     }
+
+    #[test(o = option::some(5), n = option::none<u64>())]
+    fun parametric_some_and_none_against_enum_option(o: option::Option<u64>, n: option::Option<u64>) {
+        assert!(o.is_some(), 0);
+        assert!(n.is_none(), 1);
+        assert!(*o.borrow() == 5, 2);
+    }
 }

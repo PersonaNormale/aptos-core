@@ -8,9 +8,9 @@
 use crate::{
     exp_rewriter::ExpRewriterFunctions,
     model::{
-        EnvDisplay, FieldId, FunId, FunctionEnv, GlobalEnv, GlobalId, Loc, ModuleId, NodeId,
-        Parameter, QualifiedId, QualifiedInstId, SchemaId, SpecFunId, StructId, TypeParameter,
-        GHOST_MEMORY_PREFIX, SCRIPT_MODULE_NAME,
+        AttributeSiblingId, EnvDisplay, FieldId, FunId, FunctionEnv, GlobalEnv, GlobalId, Loc,
+        ModuleId, NodeId, Parameter, QualifiedId, QualifiedInstId, SchemaId, SpecFunId, StructId,
+        TypeParameter, GHOST_MEMORY_PREFIX, SCRIPT_MODULE_NAME,
     },
     symbol::{Symbol, SymbolPool},
     ty::{ReferenceKind, Type, TypeDisplayContext},
@@ -159,21 +159,46 @@ pub struct FunParamAccessOf {
 /// # Attributes
 
 #[derive(Debug, Clone)]
+pub enum PackFields {
+    Named(Vec<(Symbol, AttributeValue)>),
+    Positional(Vec<AttributeValue>),
+}
+
+#[derive(Debug, Clone)]
 pub enum AttributeValue {
     Value(NodeId, Value),
     Name(NodeId, Option<ModuleName>, Symbol),
+    Vector(NodeId, Option<Type>, Vec<AttributeValue>),
+    Pack(
+        NodeId,
+        Option<ModuleName>,
+        Symbol,
+        /*variant*/ Option<Symbol>,
+        Option<Vec<Type>>,
+        PackFields,
+    ),
 }
 
 #[derive(Debug, Clone)]
 pub enum Attribute {
-    Apply(NodeId, Symbol, Vec<Attribute>),
-    Assign(NodeId, Symbol, AttributeValue),
+    Apply {
+        attribute_sibling_id: AttributeSiblingId,
+        node_id: NodeId,
+        name: Symbol,
+        attrs: Vec<Attribute>,
+    },
+    Assign {
+        attribute_sibling_id: AttributeSiblingId,
+        node_id: NodeId,
+        name: Symbol,
+        value: AttributeValue,
+    },
 }
 
 impl Attribute {
     pub fn name(&self) -> Symbol {
         match self {
-            Attribute::Assign(_, s, _) | Attribute::Apply(_, s, _) => *s,
+            Attribute::Assign { name, .. } | Attribute::Apply { name, .. } => *name,
         }
     }
 
@@ -181,9 +206,64 @@ impl Attribute {
         attrs.iter().any(pred)
     }
 
+    /// True if this is an `Apply` attribute whose name equals `target`.
+    pub fn is_apply_named(&self, pool: &SymbolPool, target: &str) -> bool {
+        match self {
+            Attribute::Apply { name, .. } => pool.string(*name).as_str() == target,
+            Attribute::Assign { .. } => false,
+        }
+    }
+
     pub fn node_id(&self) -> NodeId {
         match self {
-            Attribute::Assign(id, _, _) | Attribute::Apply(id, _, _) => *id,
+            Attribute::Assign { node_id, .. } | Attribute::Apply { node_id, .. } => *node_id,
+        }
+    }
+
+    pub fn attribute_sibling_id(&self) -> AttributeSiblingId {
+        match self {
+            Attribute::Assign {
+                attribute_sibling_id,
+                ..
+            }
+            | Attribute::Apply {
+                attribute_sibling_id,
+                ..
+            } => *attribute_sibling_id,
+        }
+    }
+
+    /// Builds an `Apply` attribute, minting its `NodeId` from `loc`.
+    pub fn new_apply(
+        env: &GlobalEnv,
+        loc: Loc,
+        attribute_sibling_id: AttributeSiblingId,
+        name: Symbol,
+        attrs: Vec<Attribute>,
+    ) -> Self {
+        let node_id = env.new_node(loc, Type::Tuple(vec![]));
+        Attribute::Apply {
+            attribute_sibling_id,
+            node_id,
+            name,
+            attrs,
+        }
+    }
+
+    /// Builds an `Assign` attribute, minting its `NodeId` from `loc`.
+    pub fn new_assign(
+        env: &GlobalEnv,
+        loc: Loc,
+        attribute_sibling_id: AttributeSiblingId,
+        name: Symbol,
+        value: AttributeValue,
+    ) -> Self {
+        let node_id = env.new_node(loc, Type::Tuple(vec![]));
+        Attribute::Assign {
+            attribute_sibling_id,
+            node_id,
+            name,
+            value,
         }
     }
 }

@@ -1,0 +1,10 @@
+
+Diagnostics:
+warning: a test attribute may only have one `#[expected_failure]`
+  ┌─ tests/unit_test/test/parametric_duplicate_expected_failure.move:4:44
+  │
+4 │     #[test(addr = @0x1), expected_failure, expected_failure(abort_code = 5)]
+  │                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ extra occurrence here
+
+
+============ bytecode verification succeeded ========

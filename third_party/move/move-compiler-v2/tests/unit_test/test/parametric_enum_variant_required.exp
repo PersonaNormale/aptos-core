@@ -1,0 +1,9 @@
+
+Diagnostics:
+error: unable to generate test: missing variant
+  ┌─ tests/unit_test/test/parametric_enum_variant_required.move:5:7
+  │
+5 │     #[test(e = Either(1))]
+  │       ^^^^^^^^^^^^^^^^^^^ `M::Either` is an enum; a variant must be selected, e.g. `M::Either::Left`
+6 │     fun test_no_variant(e: Either) {
+  │                         - corresponding to this parameter
